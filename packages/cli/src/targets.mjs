@@ -20,6 +20,17 @@ import {
   yamlUpsertServer,
   envUpsert,
 } from "./files.mjs";
+import {
+  addHooks,
+  codexDisableHooks,
+  codexEnableHooks,
+  hasOurHooks,
+  hermesPluginFiles,
+  hermesPluginToggle,
+  hookCommand,
+  removeHooks,
+  skillText,
+} from "./capture.mjs";
 
 export const SERVER = "wavebrain";
 export const KEY_ENV = "WAVEBRAIN_API_KEY";
@@ -101,6 +112,56 @@ function safeJson(file) {
 
 export function tilde(ctx, p) {
   return p.startsWith(ctx.home + path.sep) ? "~" + p.slice(ctx.home.length) : p;
+}
+
+// ---------- auto-capture parts (hooks, skills, plugins) ----------
+
+/**
+ * A capture part is one file we fully own (skill, plugin file) or one shared file we merge into
+ * (hooks.json, settings.json, config.toml). parts(ctx) -> [{ ref, file, apply(text), revert(text, rec) }]
+ */
+function hooksPart(ref, file, format, entries) {
+  return {
+    ref,
+    file,
+    apply: (t) => addHooks(t, file, format, entries),
+    revert: (t, rec) => removeHooks(t, file, format, { deleteIfEmpty: rec?.createdFile }),
+  };
+}
+const ownedFilePart = (ref, file, text) => ({ ref, file, apply: () => text, revert: () => null });
+
+/** Adds capture parts to a target. Skipped entirely with --no-hooks. */
+function withCapture(target, parts, after) {
+  return {
+    ...target,
+    capture: true,
+    files: (ctx) => [...target.files(ctx), ...parts(ctx).map((p) => p.file)],
+    install(ctx, s, opts, owned) {
+      const out = target.install(ctx, s, opts, owned);
+      if (opts.hooks === false) return out;
+      for (const p of parts(ctx)) {
+        const before = readText(p.file);
+        const prev = owned.get(p.ref);
+        out.push({ ref: p.ref, file: p.file, kind: s.edit(p.file, p.apply), createdFile: prev?.createdFile ?? before === null });
+      }
+      if (after) out.push(...after(ctx, s, true));
+      return out;
+    },
+    uninstall(ctx, s, owned) {
+      const out = [];
+      if (after) out.push(...after(ctx, s, false));
+      for (const p of parts(ctx)) {
+        const text = readText(p.file);
+        if (text === null) continue;
+        const rec = owned.get(p.ref);
+        // Our own files go only if we recorded them; merged files only lose our entries.
+        if (!rec && !hasOurHooks(text) && !(p.ref.endsWith(":features") && text.includes("added by wavebrain init"))) continue;
+        const kind = s.edit(p.file, (t) => p.revert(t, rec));
+        if (kind !== "unchanged") out.push({ ref: p.ref, file: p.file, kind });
+      }
+      return [...target.uninstall(ctx, s, owned), ...out];
+    },
+  };
 }
 
 // ---------- Claude Code ----------
@@ -302,17 +363,73 @@ export function hermesProfiles(ctx) {
 
 // ---------- registry ----------
 
+const CLAUDE_PARTS = (ctx) => {
+  const settings = path.join(claudeDir(ctx), "settings.json");
+  return [
+    hooksPart("claude-code:hooks", settings, "nested", [
+      { event: "PostToolUse", matcher: "Bash|mcp__.*", command: hookCommand(ctx, "claude-code", "observe"), timeout: 10 },
+      // Failed calls arrive here instead of PostToolUse; a failed deploy belongs in the record too.
+      { event: "PostToolUseFailure", matcher: "Bash|mcp__.*", command: hookCommand(ctx, "claude-code", "observe"), timeout: 10 },
+      { event: "Stop", command: hookCommand(ctx, "claude-code", "flush"), timeout: 30 },
+      { event: "SessionEnd", command: hookCommand(ctx, "claude-code", "flush"), timeout: 30 },
+    ]),
+    ownedFilePart("claude-code:skill", path.join(claudeDir(ctx), "skills", "wavebrain", "SKILL.md"), skillText()),
+  ];
+};
+
+const codexHome = (ctx) => ctx.env.CODEX_HOME || path.join(ctx.home, ".codex");
+const CODEX_PARTS = (ctx) => [
+  hooksPart("codex:hooks", path.join(codexHome(ctx), "hooks.json"), "nested", [
+    { event: "PostToolUse", matcher: "*", command: hookCommand(ctx, "codex", "observe"), timeout: 10 },
+    { event: "Stop", command: hookCommand(ctx, "codex", "flush"), timeout: 30 },
+  ]),
+  { ref: "codex:features", file: codexToml(ctx), apply: codexEnableHooks, revert: codexDisableHooks },
+  ownedFilePart("codex:skill", path.join(codexHome(ctx), "skills", "wavebrain", "SKILL.md"), skillText()),
+];
+
+const CURSOR_PARTS = (ctx) => [
+  hooksPart("cursor:hooks", path.join(ctx.home, ".cursor", "hooks.json"), "flat", [
+    { event: "postToolUse", matcher: "Shell|MCP", command: hookCommand(ctx, "cursor", "observe") },
+    { event: "stop", command: hookCommand(ctx, "cursor", "flush") },
+  ]),
+];
+
+function hermesDir(ctx, profile) {
+  return profile ? path.join(hermesHome(ctx), "profiles", profile) : hermesHome(ctx);
+}
+const hermesParts = (profile) => (ctx) =>
+  hermesPluginFiles().map(([f, text]) =>
+    ownedFilePart(`${profile ? `hermes:${profile}` : "hermes"}:plugin:${f}`, path.join(hermesDir(ctx, profile), "plugins", "wavebrain", f), text),
+  );
+/** Hermes only loads third-party plugins on its allow-list. */
+const hermesToggle = (profile) => (ctx, s, on) => {
+  const id = profile ? `hermes:${profile}` : "hermes";
+  if (s.dryRun) return [{ ref: `${id}:plugin-enabled`, file: path.join(hermesDir(ctx, profile), "config.yaml"), kind: on ? "enable plugin" : "disable plugin" }];
+  if (!onPath(ctx, "hermes")) return [];
+  const ok = hermesPluginToggle(ctx, hermesDir(ctx, profile), on);
+  return ok ? [{ ref: `${id}:plugin-enabled`, file: path.join(hermesDir(ctx, profile), "config.yaml"), kind: on ? "enabled plugin" : "disabled plugin" }] : [];
+};
+const hermesWithCapture = (profile) => withCapture(hermesTarget(profile), hermesParts(profile), hermesToggle(profile));
+
 export const BASE_TARGET_IDS = ["claude-code", "codex", "cursor", "windsurf", "claude-desktop", "vscode", "hermes"];
 
-const BASE = { "claude-code": claudeCode, codex, cursor, windsurf, "claude-desktop": claudeDesktop, vscode, hermes: hermesTarget(null) };
+const BASE = {
+  "claude-code": withCapture(claudeCode, CLAUDE_PARTS),
+  codex: withCapture(codex, CODEX_PARTS),
+  cursor: withCapture(cursor, CURSOR_PARTS),
+  windsurf,
+  "claude-desktop": claudeDesktop,
+  vscode,
+  hermes: hermesWithCapture(null),
+};
 
 /** Every target, including one per Hermes profile found. */
 export function allTargets(ctx) {
-  return [...BASE_TARGET_IDS.map((id) => BASE[id]), ...hermesProfiles(ctx).map((p) => hermesTarget(p))];
+  return [...BASE_TARGET_IDS.map((id) => BASE[id]), ...hermesProfiles(ctx).map((p) => hermesWithCapture(p))];
 }
 
 export function targetById(ctx, id) {
   if (BASE[id]) return BASE[id];
   const m = id.match(/^hermes:([A-Za-z0-9._-]+)$/);
-  return m ? hermesTarget(m[1]) : null;
+  return m ? hermesWithCapture(m[1]) : null;
 }

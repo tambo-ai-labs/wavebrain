@@ -3,16 +3,17 @@ import os from "node:os";
 import readline from "node:readline";
 import { Conflict, Session, hasBlock, readText } from "./files.mjs";
 import { loadState, ownedBy, saveState, statePath } from "./state.mjs";
+import { stageCapture, unstageCapture } from "./capture.mjs";
 import { KEY_ENV, allTargets, targetById, tilde } from "./targets.mjs";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 const DEFAULT_URL = "https://getwavebrain.com/api/mcp";
 const SETUP_URL = "https://getwavebrain.com/dashboard/setup";
 
 const HELP = `wavebrain ${VERSION}: connect your AI agents to WaveBrain (https://getwavebrain.com)
 
 Usage:
-  npx wavebrain init      Pick agents and add WaveBrain to their config
+  npx wavebrain init      Pick agents and connect them to WaveBrain
   npx wavebrain remove    Undo exactly what init added
   npx wavebrain status    Show which agents are configured
 
@@ -23,15 +24,22 @@ Options:
   --key <key>             API key (or set ${KEY_ENV}). Create one at
                           ${SETUP_URL}
   --dry-run               Show what would change without writing anything
+  --no-hooks              MCP server only: skip the hooks, skill and Hermes plugin
+                          that record actions the model forgets to log
   --no-claude-permission  Don't pre-approve WaveBrain's tools in Claude Code
   -y, --yes               Don't ask for confirmation
   --url <url>             MCP server URL (default ${DEFAULT_URL})
   -h, --help, -v, --version
 
+For Claude Code, Codex, Cursor and Hermes, init also installs auto-capture: hooks that
+record deploys, pushes, releases, payments, emails and database writes even when the model
+doesn't call log_action, plus a short skill telling it when to log. Secrets are redacted
+before anything is sent. Turn capture off any time with WAVEBRAIN_HOOKS=off.
+
 Every file is backed up to <file>.bak-wavebrain before it's changed.`;
 
 export function parseArgs(argv) {
-  const o = { command: null, agents: [], key: null, dryRun: false, yes: false, claudePermission: null, url: DEFAULT_URL };
+  const o = { command: null, agents: [], key: null, dryRun: false, yes: false, claudePermission: null, url: DEFAULT_URL, hooks: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = () => {
@@ -47,6 +55,7 @@ export function parseArgs(argv) {
     else if (a === "--dry-run") o.dryRun = true;
     else if (a === "--yes" || a === "-y") o.yes = true;
     else if (a === "--no-claude-permission") o.claudePermission = false;
+    else if (a === "--no-hooks") o.hooks = false;
     else if (a === "--claude-permission") o.claudePermission = true;
     else if (a === "-h" || a === "--help") o.command = "help";
     else if (a === "-v" || a === "--version") o.command = "version";
@@ -133,7 +142,7 @@ async function init(o, ctx, io) {
   io.out(`\n${o.dryRun ? "Dry run: nothing will be written.\n" : ""}Using key ${mask(key)} and ${o.url}\n`);
   const state = loadState(ctx);
   const session = new Session({ dryRun: o.dryRun });
-  const opts = { url: o.url, key, keyFromEnv, claudePermission };
+  const opts = { url: o.url, key, keyFromEnv, claudePermission, hooks: o.hooks };
   let failed = 0;
   const nextSteps = [];
 
@@ -168,6 +177,21 @@ async function init(o, ctx, io) {
     }
   }
 
+  // The hook runner and the key it uses, shared by every agent with auto-capture.
+  if (o.hooks && targets.some((t) => t.capture)) {
+    const results = stageCapture(ctx, session, opts);
+    const changed = results.filter((r) => r.kind !== "unchanged");
+    for (const r of results) {
+      const prev = state.records.find((x) => x.ref === r.ref);
+      state.records = state.records.filter((x) => x.ref !== r.ref);
+      state.records.push({ ref: r.ref, target: "capture", file: r.file, createdFile: prev?.createdFile ?? Boolean(r.createdFile) });
+    }
+    if (changed.length) {
+      io.out(`✓ Auto-capture`);
+      for (const r of changed) io.out(`    ${o.dryRun ? "would " + verb(r.kind) : verb(r.kind, true)} ${describe(ctx, r)}`);
+    }
+  }
+
   if (!o.dryRun) saveState(ctx, state);
   if (nextSteps.length) io.out(`\nNext:\n${nextSteps.map((s) => `  ${s}`).join("\n")}`);
   if (!o.dryRun && session.changes.some((c) => c.backup)) io.out(`\nBackups end in .bak-wavebrain. Undo with: npx wavebrain remove`);
@@ -179,11 +203,26 @@ function verb(kind, past) {
 }
 
 function describe(ctx, r) {
-  const what = r.ref.endsWith(":permission")
+  const ref = r.ref;
+  const what = ref.endsWith(":permission")
     ? " (allow mcp__wavebrain__*)"
-    : r.ref.endsWith(":env")
+    : ref.endsWith(":env")
       ? ` (${KEY_ENV})`
-      : " (wavebrain server)";
+      : ref.endsWith(":hooks")
+        ? " (auto-capture hooks)"
+        : ref.endsWith(":features")
+          ? " ([features] hooks = true)"
+          : ref.endsWith(":skill")
+            ? " (when-to-log skill)"
+            : ref.includes(":plugin:")
+              ? " (WaveBrain plugin)"
+              : ref.endsWith(":plugin-enabled")
+                ? " (plugins.enabled: wavebrain)"
+                : ref === "capture:config"
+                  ? " (API key for the hooks)"
+                  : ref.startsWith("capture:")
+                    ? " (hook runner)"
+                    : " (wavebrain server)";
   return tilde(ctx, r.file) + what;
 }
 
@@ -244,6 +283,16 @@ async function remove(o, ctx, io) {
       if (!(e instanceof Conflict)) throw e;
       io.out(`! ${t.label}: ${e.message}`);
     }
+  }
+  // Last agent with auto-capture gone: remove the hook runner and its key too.
+  const captureLeft = state.records.some((r) => r.target !== "capture" && targetById(ctx, r.target)?.capture);
+  if (!captureLeft && state.records.some((r) => r.target === "capture")) {
+    const results = unstageCapture(ctx, session).filter((r) => r.kind !== "unchanged");
+    if (results.length) {
+      io.out(`✓ Auto-capture`);
+      for (const r of results) io.out(`    ${o.dryRun ? "would " + verb(r.kind) : verb(r.kind, true)} ${tilde(ctx, r.file)}`);
+    }
+    state.records = state.records.filter((r) => r.target !== "capture");
   }
   if (!o.dryRun) saveState(ctx, state);
   return 0;

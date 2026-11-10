@@ -1,0 +1,18 @@
+{
+  "name": "wavebrain",
+  "version": "0.2.0",
+  "description": "Logs your agent's real-world actions to WaveBrain, the audit log of what your AI agents did.",
+  "author": {
+    "name": "Tambo Labs",
+    "email": "support@tambolabs.com",
+    "url": "https://getwavebrain.com"
+  },
+  "homepage": "https://getwavebrain.com",
+  "keywords": [
+    "audit-log",
+    "agents",
+    "mcp",
+    "wavebrain"
+  ],
+  "skills": "./skills/"
+}

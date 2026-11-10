@@ -184,8 +184,66 @@ test("interactive: nothing is preselected, and the user's picks are used", async
   assert.equal(await run(["init"], ctx, some), 0);
   assert.match(some.lines.join("\n"), /1\) Claude Code\n {2}2\) Cursor\n {2}3\) Windsurf/);
   assert.ok(json(ctx, ".claude.json").mcpServers.wavebrain);
-  assert.ok(!has(ctx, ".claude/settings.json"));
+  assert.equal(json(ctx, ".claude/settings.json").permissions, undefined);
+  assert.ok(json(ctx, ".claude/settings.json").hooks.PostToolUse);
   assert.ok(!has(ctx, ".cursor/mcp.json"));
+});
+
+test("auto-capture: hooks, skills and the Hermes plugin are installed and removed cleanly", async () => {
+  const ctx = sandbox();
+  write(ctx, ".codex/hooks.json", JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "my-own-hook" }] }] } }, null, 2) + "\n");
+  write(ctx, ".cursor/hooks.json", JSON.stringify({ version: 1, hooks: { stop: [{ command: "mine" }] } }, null, 2) + "\n");
+  write(ctx, ".codex/config.toml", 'model = "o3"\n');
+  const before = { codex: read(ctx, ".codex/hooks.json"), cursor: read(ctx, ".cursor/hooks.json"), toml: read(ctx, ".codex/config.toml") };
+
+  assert.equal(await run(["init", ...ALL, "--key", KEY], ctx, io()), 0);
+  const cc = json(ctx, ".claude/settings.json").hooks;
+  assert.match(cc.PostToolUse[0].hooks[0].command, /\.wavebrain\/hooks\/hook\.mjs" claude-code observe$/);
+  assert.equal(cc.PostToolUse[0].matcher, "Bash|mcp__.*");
+  assert.match(cc.Stop[0].hooks[0].command, /claude-code flush$/);
+  assert.ok(has(ctx, ".claude/skills/wavebrain/SKILL.md"));
+
+  const cx = json(ctx, ".codex/hooks.json").hooks;
+  assert.equal(cx.Stop.length, 2, "user's own Stop hook kept");
+  assert.match(cx.PostToolUse[0].hooks[0].command, /codex observe$/);
+  assert.match(read(ctx, ".codex/config.toml"), /^model = "o3"\n\n\[features\] # added by wavebrain init\nhooks = true/);
+  assert.ok(has(ctx, ".codex/skills/wavebrain/SKILL.md"));
+
+  const cu = json(ctx, ".cursor/hooks.json");
+  assert.equal(cu.version, 1);
+  assert.deepEqual(cu.hooks.stop.map((h) => h.command.endsWith("cursor flush") || h.command), ["mine", true]);
+
+  for (const f of ["__init__.py", "plugin.yaml", "rules.json"]) assert.ok(has(ctx, `.hermes/plugins/wavebrain/${f}`), f);
+  for (const f of ["hook.mjs", "core.mjs", "rules.json"]) assert.ok(has(ctx, `.wavebrain/hooks/${f}`), f);
+  const cfg = json(ctx, ".wavebrain/config.json");
+  assert.equal(cfg.apiKey, KEY);
+  assert.equal(cfg.apiUrl, "https://getwavebrain.com/api/v1/actions");
+  assert.equal(fs.statSync(path.join(ctx.home, ".wavebrain/config.json")).mode & 0o777, 0o600);
+
+  // Idempotent, and the staged hook actually runs.
+  const snap = () => [".claude/settings.json", ".codex/hooks.json", ".codex/config.toml", ".cursor/hooks.json"].map((f) => read(ctx, f));
+  const s1 = snap();
+  await run(["init", ...ALL, "--key", KEY], ctx, io());
+  assert.deepEqual(snap(), s1);
+
+  assert.equal(await run(["remove", "--yes"], ctx, io()), 0);
+  assert.equal(read(ctx, ".codex/hooks.json"), before.codex);
+  assert.equal(read(ctx, ".cursor/hooks.json"), before.cursor);
+  assert.equal(read(ctx, ".codex/config.toml"), before.toml);
+  assert.ok(!has(ctx, ".claude/settings.json"));
+  assert.ok(!has(ctx, ".claude/skills/wavebrain/SKILL.md"));
+  assert.ok(!has(ctx, ".hermes/plugins/wavebrain/__init__.py"));
+  assert.ok(!has(ctx, ".wavebrain/config.json"));
+  assert.ok(!has(ctx, ".wavebrain/hooks/hook.mjs"));
+});
+
+test("--no-hooks installs the MCP server only", async () => {
+  const ctx = sandbox();
+  assert.equal(await run(["init", "--agent", "codex", "--agent", "cursor", "--no-hooks", "--key", KEY], ctx, io()), 0);
+  assert.ok(!has(ctx, ".codex/hooks.json"));
+  assert.ok(!has(ctx, ".cursor/hooks.json"));
+  assert.ok(!has(ctx, ".wavebrain/config.json"));
+  assert.doesNotMatch(read(ctx, ".codex/config.toml"), /\[features\]/);
 });
 
 test("interactive: Enter at the key prompt opens the setup page", async () => {

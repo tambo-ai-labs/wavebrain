@@ -21,6 +21,13 @@ the WaveBrain MCP server to each agent's own config:
 | VS Code (Copilot) | user-profile `mcp.json` | header |
 | Hermes Agent | `~/.hermes/config.yaml` and each profile's | `WAVEBRAIN_API_KEY` in the profile's `.env`; config.yaml only references it |
 
+For Claude Code, Codex, Cursor and Hermes, `init` also installs **auto-capture**: hooks (a Hermes
+plugin for Hermes) that record deploys, pushes, releases, payments, emails and database writes even
+when the model forgets to call `log_action`, plus a short skill telling it when to log. Actions are
+queued locally in `~/.wavebrain/queue`, sent at the end of each turn, and skipped if the agent logged
+them itself. Secrets are redacted first. Use `--no-hooks` for the MCP server only, or set
+`WAVEBRAIN_HOOKS=off` to pause capture.
+
 Every file is copied to `<file>.bak-wavebrain` before it's changed, re-running is safe, and the full
 key is never printed. Servers named `wavebrain` that you added yourself are left alone.
 
@@ -36,7 +43,7 @@ npx wavebrain remove                       # undo exactly what init added
 ```
 
 Agent names: `claude-code`, `codex`, `cursor`, `windsurf`, `claude-desktop`, `vscode`, `hermes`,
-`hermes:<profile>`. Other options: `--no-claude-permission`, `--yes`, `--url <mcp url>`.
+`hermes:<profile>`. Other options: `--no-hooks`, `--no-claude-permission`, `--yes`, `--url <mcp url>`.
 
 What init added is recorded (file paths only, no keys) in `~/.wavebrain/installed.json`, so `remove`
 can undo it without touching anything else.

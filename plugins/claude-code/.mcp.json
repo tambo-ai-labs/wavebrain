@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wavebrain": {
+      "type": "http",
+      "url": "https://getwavebrain.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${WAVEBRAIN_API_KEY}"
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "wavebrain",
+  "owner": {
+    "name": "Tambo Labs",
+    "email": "support@tambolabs.com"
+  },
+  "metadata": {
+    "description": "WaveBrain: a clear record of what your AI agents did.",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "wavebrain",
+      "source": "./plugins/claude-code",
+      "description": "Logs your agent's deploys, pushes, releases, emails, payments and other real-world actions to WaveBrain. MCP tools plus hooks that catch what the model forgets.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Tambo Labs"
+      },
+      "homepage": "https://getwavebrain.com",
+      "category": "productivity",
+      "keywords": [
+        "audit-log",
+        "agents",
+        "mcp",
+        "observability",
+        "wavebrain"
+      ]
+    }
+  ]
+}
