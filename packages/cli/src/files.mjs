@@ -35,16 +35,29 @@ export class Session {
     const after = fn(before);
     if (after === before) return "unchanged";
     const kind = before === null ? "created" : after === null ? "deleted" : "updated";
-    const backup = before === null ? null : file + BACKUP_SUFFIX;
+    // Files that are entirely ours (in a wavebrain folder) aren't backed up: a backup of
+    // ~/.wavebrain/config.json would leave the API key behind after `remove`.
+    const ownedFile = /[\\/](\.wavebrain|wavebrain)[\\/]/.test(file);
+    const backup = before === null || ownedFile ? null : file + BACKUP_SUFFIX;
     if (!this.dryRun) {
       let mode;
       if (before !== null) {
         mode = fs.statSync(file).mode & 0o777;
-        fs.copyFileSync(file, backup);
-        fs.chmodSync(backup, mode);
+        if (backup) {
+          fs.copyFileSync(file, backup);
+          fs.chmodSync(backup, mode);
+        }
       }
-      if (after === null) fs.unlinkSync(file);
-      else writeAtomic(file, after, mode);
+      if (after === null) {
+        fs.unlinkSync(file);
+        // Folders that only ever held our files (skills/wavebrain, plugins/wavebrain, ~/.wavebrain/hooks).
+        const dir = path.dirname(file);
+        if (/(^|[\\/])(wavebrain|hooks)$/.test(dir) && /wavebrain/.test(dir)) {
+          try {
+            fs.rmdirSync(dir);
+          } catch {}
+        }
+      } else writeAtomic(file, after, mode);
     }
     this.changes.push({ file, kind, backup });
     return kind;

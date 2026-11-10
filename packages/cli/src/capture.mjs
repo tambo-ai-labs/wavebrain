@@ -186,3 +186,46 @@ export function hermesPluginToggle(ctx, hermesDir, on) {
   });
   return r.status === 0;
 }
+
+/**
+ * Removes "wavebrain" from plugins.enabled / plugins.disabled in a Hermes config.yaml, and drops a
+ * plugins block that is left empty. Used by `remove` (the plugin files are deleted too), so the
+ * file ends up as it was rather than with wavebrain on the disabled list.
+ */
+export function hermesUnlistPlugin(text) {
+  if (text === null) return null;
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => /^plugins:\s*(#.*)?$/.test(l));
+  if (start < 0) return text;
+  let end = start + 1;
+  while (end < lines.length && (lines[end] === "" || /^\s/.test(lines[end]))) end++;
+  let block = lines.slice(start + 1, end);
+  block = block.filter((l) => !/^\s+-\s*["']?wavebrain["']?\s*$/.test(l));
+  block = block.map((l) =>
+    l.replace(/^(\s+(?:enabled|disabled):\s*)\[(.*)\]\s*$/, (_, k, items) => {
+      const left = items.split(",").map((x) => x.trim()).filter((x) => x && !/^["']?wavebrain["']?$/.test(x));
+      return `${k}[${left.join(", ")}]`;
+    }),
+  );
+  // A key with no list items left: "  enabled:" followed by nothing indented deeper.
+  block = block.filter((l, i) => {
+    const m = /^(\s+)(enabled|disabled):\s*(\[\])?\s*$/.exec(l);
+    if (!m) return true;
+    const next = block.slice(i + 1).find((x) => x.trim() !== "");
+    return next !== undefined && next.match(/^\s*/)[0].length > m[1].length && /^\s+-/.test(next);
+  });
+  const meaningful = block.some((l) => l.trim() && !l.trim().startsWith("#"));
+  // Drop trailing blank lines inside the block range.
+  while (block.length && block[block.length - 1] === "") block.pop();
+  let out;
+  if (meaningful) out = [...lines.slice(0, start + 1), ...block, ...(end < lines.length ? [""] : []), ...lines.slice(end)];
+  else {
+    let head = lines.slice(0, start);
+    while (head.length && head[head.length - 1] === "") head.pop();
+    const tail = lines.slice(end);
+    out = [...head, ...(tail.length && head.length ? [""] : []), ...tail];
+  }
+  let res = out.join("\n");
+  if (text.endsWith("\n") && !res.endsWith("\n")) res += "\n";
+  return res;
+}

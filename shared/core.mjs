@@ -287,12 +287,23 @@ function rewrite(file, items) {
 
 // ---------- host payloads ----------
 
+/** Plain-text tool output (Codex) has no exit code: treat a clear error line at the start or end as a failure. */
+export function looksFailed(resp) {
+  if (typeof resp !== "string") return false;
+  const lines = resp.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return false;
+  const bad = (l) => /^(fatal|error|Error|ERROR)(\[[^\]]*\])?:/.test(l) || /: command not found$|^Permission denied|^npm ERR!|^Traceback \(most recent call last\)/.test(l);
+  return bad(lines[0]) || bad(lines[lines.length - 1]);
+}
+
 /** Normalizes a hook's stdin JSON into { session, toolName, toolInput, cwd, failed }. */
 export function fromHookInput(host, input) {
   const resp = input.tool_response ?? input.tool_output ?? input.result ?? {};
   const exit = resp?.exit_code ?? resp?.exitCode ?? input.exit_code ?? input.exitCode;
   const failed =
     (typeof exit === "number" && exit !== 0) ||
+    looksFailed(resp) || // Codex sends only the output text, without an exit code
+
     resp?.interrupted === true ||
     resp?.success === false ||
     input.status === "error" ||

@@ -105,6 +105,9 @@ test("normalizes Claude Code, Codex and Cursor hook payloads", () => {
   assert.equal(cur.session, "c");
   assert.equal(cur.cwd, "/w");
   assert.equal(fromHookInput("claude-code", { hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "git push" }, error: "Exit code 128" }).failed, true);
+  assert.equal(fromHookInput("codex", { tool_name: "Bash", tool_input: { command: "git push" }, tool_response: "fatal: 'origin' does not appear to be a git repository\n" }).failed, true);
+  assert.equal(fromHookInput("codex", { tool_name: "Bash", tool_input: { command: "git push" }, tool_response: "To github.com:x/y.git\n   a..b  main -> main\n" }).failed, false);
+  assert.equal(fromHookInput("codex", { tool_name: "Bash", tool_input: { command: "npm run build" }, tool_response: "warning: 1 error: fixed\nBuild ok\n" }).failed, false);
   assert.equal(fromHookInput("codex", { tool_name: "Bash", tool_input: { command: ["git", "push"] }, tool_response: { exit_code: 1 } }).failed, true);
 });
 

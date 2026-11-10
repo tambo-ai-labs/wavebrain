@@ -16,6 +16,8 @@ npx wavebrain init
 | Hermes Agent | each profile's `config.yaml` | plugin in `<profile>/plugins/wavebrain` (post_tool_call, on_session_end) | plugin system-prompt section |
 | Windsurf, VS Code, Claude Desktop | their MCP config | no hook support | MCP server instructions |
 
+**Codex** reviews new hooks before running them: after `init`, start `codex`, open `/hooks` and trust the two WaveBrain hooks. Until then Codex still has the MCP server, just not auto-capture.
+
 `npx wavebrain remove` undoes exactly what `init` added. `--no-hooks` installs the MCP server only.
 
 ## Why hooks

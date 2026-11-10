@@ -27,6 +27,7 @@ import {
   hasOurHooks,
   hermesPluginFiles,
   hermesPluginToggle,
+  hermesUnlistPlugin,
   hookCommand,
   removeHooks,
   skillText,
@@ -234,7 +235,7 @@ const codex = {
   files: (ctx) => [codexToml(ctx)],
   detect: (ctx) => exists(codexToml(ctx)) || onPath(ctx, "codex"),
   configured: (ctx) => /^\s*\[mcp_servers\.wavebrain\]/m.test(readText(codexToml(ctx)) ?? ""),
-  next: `Start a new Codex session; /mcp should list wavebrain.`,
+  next: `Start a new Codex session; /mcp should list wavebrain. Codex asks you to review new hooks once: open /hooks and trust the two WaveBrain hooks (auto-capture stays off until you do).`,
   install(ctx, s, { url, key, keyFromEnv }) {
     const f = codexToml(ctx);
     // With the key already in the environment, reference it; otherwise Codex needs it in the file.
@@ -303,7 +304,10 @@ const vscode = jsonTarget({
 // ---------- Hermes ----------
 
 function hermesHome(ctx) {
-  return ctx.env.HERMES_HOME || path.join(ctx.home, ".hermes");
+  const h = ctx.env.HERMES_HOME;
+  // Inside a Hermes profile's terminal, HERMES_HOME is ~/.hermes/profiles/<name>; profiles live one level up.
+  if (h && path.basename(path.dirname(h)) === "profiles") return path.dirname(path.dirname(h));
+  return h || path.join(ctx.home, ".hermes");
 }
 
 function hermesTarget(profile) {
@@ -405,6 +409,12 @@ const hermesParts = (profile) => (ctx) =>
 const hermesToggle = (profile) => (ctx, s, on) => {
   const id = profile ? `hermes:${profile}` : "hermes";
   if (s.dryRun) return [{ ref: `${id}:plugin-enabled`, file: path.join(hermesDir(ctx, profile), "config.yaml"), kind: on ? "enable plugin" : "disable plugin" }];
+  const file = path.join(hermesDir(ctx, profile), "config.yaml");
+  if (!on) {
+    // The plugin files are being deleted; take wavebrain off the plugin lists rather than marking it disabled.
+    const kind = s.edit(file, hermesUnlistPlugin);
+    return kind === "unchanged" ? [] : [{ ref: `${id}:plugin-enabled`, file, kind: "disabled plugin" }];
+  }
   if (!onPath(ctx, "hermes")) return [];
   const ok = hermesPluginToggle(ctx, hermesDir(ctx, profile), on);
   return ok ? [{ ref: `${id}:plugin-enabled`, file: path.join(hermesDir(ctx, profile), "config.yaml"), kind: on ? "enabled plugin" : "disabled plugin" }] : [];

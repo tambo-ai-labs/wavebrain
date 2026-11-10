@@ -235,6 +235,22 @@ test("auto-capture: hooks, skills and the Hermes plugin are installed and remove
   assert.ok(!has(ctx, ".hermes/plugins/wavebrain/__init__.py"));
   assert.ok(!has(ctx, ".wavebrain/config.json"));
   assert.ok(!has(ctx, ".wavebrain/hooks/hook.mjs"));
+  // No leftovers: no backup holding the key, no empty folders of ours.
+  assert.ok(!has(ctx, ".wavebrain/config.json.bak-wavebrain"));
+  assert.ok(!has(ctx, ".wavebrain/hooks"));
+  assert.ok(!has(ctx, ".claude/skills/wavebrain"));
+  assert.ok(!has(ctx, ".hermes/plugins/wavebrain"));
+});
+
+test("inside a Hermes profile's terminal (HERMES_HOME=<root>/profiles/<name>) profiles still resolve", async () => {
+  const ctx = sandbox();
+  write(ctx, ".hermes/config.yaml", "model: x\n");
+  write(ctx, ".hermes/profiles/bot/config.yaml", "model: y\n");
+  ctx.env.HERMES_HOME = path.join(ctx.home, ".hermes", "profiles", "bot");
+  assert.equal(await run(["init", "--agent", "hermes:bot", "--agent", "hermes", "--key", KEY], ctx, io()), 0);
+  assert.match(read(ctx, ".hermes/profiles/bot/config.yaml"), /wavebrain:/);
+  assert.match(read(ctx, ".hermes/config.yaml"), /wavebrain:/);
+  assert.ok(!has(ctx, ".hermes/profiles/bot/profiles"));
 });
 
 test("--no-hooks installs the MCP server only", async () => {
@@ -273,4 +289,17 @@ test("Linux and Windows paths", async () => {
   win.env.APPDATA = path.join(win.home, "Roaming");
   await run(["init", "--agent", "claude-desktop", "--key", KEY], win, io());
   assert.ok(has(win, "Roaming/Claude/claude_desktop_config.json"));
+});
+
+test("hermesUnlistPlugin takes wavebrain off the plugin lists and drops an emptied block", async () => {
+  const { hermesUnlistPlugin: f } = await import("../src/capture.mjs");
+  assert.equal(f("model: x\n\nplugins:\n  enabled: []\n  disabled:\n    - wavebrain\n"), "model: x\n");
+  assert.equal(f("model: x\nplugins:\n  enabled:\n    - wavebrain\n"), "model: x\n");
+  assert.equal(
+    f("a: 1\nplugins:\n  enabled:\n    - honcho\n    - wavebrain\n  clone_timeout_seconds: 300\nb: 2\n"),
+    "a: 1\nplugins:\n  enabled:\n    - honcho\n  clone_timeout_seconds: 300\n\nb: 2\n",
+  );
+  assert.equal(f("plugins:\n  enabled: [honcho, wavebrain]\n"), "plugins:\n  enabled: [honcho]\n");
+  assert.equal(f("model: x\n"), "model: x\n");
+  assert.equal(f(null), null);
 });
