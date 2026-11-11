@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": "node \"$CURSOR_PLUGIN_ROOT/hooks/hook.mjs\" cursor observe",
+        "matcher": "Shell|MCP"
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "node \"$CURSOR_PLUGIN_ROOT/hooks/hook.mjs\" cursor observe",
+        "matcher": "Shell|MCP"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node \"$CURSOR_PLUGIN_ROOT/hooks/hook.mjs\" cursor flush"
+      }
+    ]
+  }
+}

@@ -9,7 +9,7 @@
   },
   "homepage": "https://getwavebrain.com",
   "repository": "https://github.com/tambo-ai-labs/wavebrain",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "keywords": [
     "audit-log",
     "agents",

@@ -1,0 +1,17 @@
+{
+  "name": "wavebrain",
+  "owner": {
+    "name": "Tambo Labs",
+    "email": "support@tambolabs.com"
+  },
+  "metadata": {
+    "description": "WaveBrain: a clear record of what your AI agents did."
+  },
+  "plugins": [
+    {
+      "name": "wavebrain",
+      "source": "plugins/cursor",
+      "description": "Logs your agent's real-world actions to WaveBrain: MCP tools plus hooks that catch what the model forgets."
+    }
+  ]
+}

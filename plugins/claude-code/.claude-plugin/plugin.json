@@ -25,5 +25,6 @@
     }
   },
   "privacyPolicyUrl": "https://getwavebrain.com/privacy",
-  "repository": "https://github.com/tambo-ai-labs/wavebrain"
+  "repository": "https://github.com/tambo-ai-labs/wavebrain",
+  "license": "MIT"
 }

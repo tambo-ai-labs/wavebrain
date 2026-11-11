@@ -8,7 +8,8 @@
   },
   "files": [
     "bin",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18.17"
@@ -25,5 +26,5 @@
     "url": "git+https://github.com/tambo-ai-labs/wavebrain.git",
     "directory": "packages/wavebrain"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

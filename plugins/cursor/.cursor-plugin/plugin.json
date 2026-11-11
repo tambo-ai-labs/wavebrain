@@ -1,0 +1,34 @@
+{
+  "name": "wavebrain",
+  "displayName": "WaveBrain",
+  "version": "0.4.0",
+  "description": "Logs your agent's deploys, pushes, releases, emails, payments and other real-world actions to WaveBrain, the audit log of what your AI agents did. MCP tools plus hooks that catch what the model forgets to log.",
+  "author": {
+    "name": "Tambo Labs",
+    "email": "support@tambolabs.com"
+  },
+  "homepage": "https://getwavebrain.com",
+  "repository": "https://github.com/tambo-ai-labs/wavebrain",
+  "license": "MIT",
+  "keywords": [
+    "audit-log",
+    "agents",
+    "mcp",
+    "observability",
+    "wavebrain"
+  ],
+  "logo": "assets/logo.svg",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "WAVEBRAIN_API_KEY": {
+        "type": "string",
+        "title": "WaveBrain API key",
+        "description": "Starts with al_. Create one at https://getwavebrain.com/dashboard/setup"
+      }
+    },
+    "required": [
+      "WAVEBRAIN_API_KEY"
+    ]
+  }
+}

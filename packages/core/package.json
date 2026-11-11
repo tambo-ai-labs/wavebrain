@@ -10,5 +10,5 @@
   "scripts": {
     "test": "node --test test/"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

@@ -95,12 +95,19 @@ export function mcpParts(name) {
   if (m) return { server: m[1], tool: m[2] };
   m = name.match(/^mcp_([a-z0-9-]+)_(.+)$/i);
   if (m) return { server: m[1], tool: m[2] };
+  // Cursor: "MCP:<tool>", without the server name.
+  m = name.match(/^MCP:(.+)$/);
+  if (m) return { server: "mcp", tool: m[1], noServer: true };
   return null;
 }
+
+/** WaveBrain's own MCP tools; skipped (or treated as the agent's own log) when the server name is missing. */
+const WAVEBRAIN_TOOLS = new Set(["log_action", "start_session", "end_session", "list_actions", "list_recent_actions"]);
 
 export function isAgentLog(toolName, toolInput) {
   const n = String(toolName || "");
   if (/wavebrain.*log_action$/i.test(n)) return true;
+  if (/^MCP:log_action$/.test(n)) return true; // Cursor drops the server name
   // Cursor reports MCP calls as tool "MCP" with the real name inside the input.
   const inner = toolInput?.toolName || toolInput?.tool_name || toolInput?.name;
   return /^mcp$/i.test(n) && /log_action$/i.test(String(inner || "")) && /wavebrain/i.test(JSON.stringify(toolInput));
@@ -149,6 +156,7 @@ export function classify(rules, ev) {
   const mcp = mcpParts(name) ?? (/^mcp$/i.test(name) ? { server: String(input.server || input.serverName || "mcp"), tool: String(input.toolName || input.tool_name || input.name || "") } : null);
   if (mcp && mcp.tool) {
     if (rules.mcpSkipServers.has(mcp.server)) return null;
+    if (mcp.noServer && WAVEBRAIN_TOOLS.has(mcp.tool)) return null;
     const verbs = mcp.tool.toLowerCase().split(/[_\-.]+/);
     if (!verbs.some((v) => rules.mcpWriteVerbs.includes(v))) return null;
     const args = redact(JSON.stringify(input.arguments ?? input.args ?? input)).slice(0, 1500);

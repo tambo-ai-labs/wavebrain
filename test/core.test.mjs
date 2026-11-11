@@ -135,3 +135,14 @@ test("every shipped copy matches shared/", () => {
   const r = spawnSync(process.execPath, [path.join(ROOT, "scripts/sync.mjs"), "--check"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stdout);
 });
+
+test("Cursor's MCP:<tool> names: writes recorded, WaveBrain's own tools skipped, MCP:log_action counts as the agent's log", async () => {
+  const { classify, loadRules, isAgentLog } = await import("../shared/core.mjs");
+  const rules = loadRules();
+  const w = classify(rules, { toolName: "MCP:create_refund", toolInput: { amount: 5 } });
+  assert.equal(w?.rule, "mcp-write");
+  assert.equal(classify(rules, { toolName: "MCP:search_docs", toolInput: {} }), null);
+  assert.equal(classify(rules, { toolName: "MCP:start_session", toolInput: {} }), null);
+  assert.equal(isAgentLog("MCP:log_action", {}), true);
+  assert.equal(isAgentLog("MCP:create_refund", {}), false);
+});

@@ -30,6 +30,13 @@ const COPIES = [
   [S("hook.mjs"), "plugins/codex/hooks/hook.mjs"],
   [S("rules.json"), "plugins/codex/hooks/rules.json"],
   [S("SKILL.md"), "plugins/codex/skills/wavebrain/SKILL.md"],
+  // Cursor plugin
+  [S("core.mjs"), "plugins/cursor/hooks/core.mjs"],
+  [S("hook.mjs"), "plugins/cursor/hooks/hook.mjs"],
+  [S("rules.json"), "plugins/cursor/hooks/rules.json"],
+  [S("SKILL.md"), "plugins/cursor/skills/wavebrain/SKILL.md"],
+  [path.join(ROOT, "LICENSE"), "plugins/cursor/LICENSE"],
+  ...["cursor", "hermes", "wavebrain"].map((h) => [path.join(ROOT, "LICENSE"), `packages/${h}/LICENSE`]),
   // What the installers write (packages/core/assets), from shared/ and plugins/hermes
   [S("core.mjs"), "packages/core/assets/hooks/core.mjs"],
   [S("hook.mjs"), "packages/core/assets/hooks/hook.mjs"],
