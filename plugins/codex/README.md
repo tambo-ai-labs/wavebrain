@@ -1,11 +1,18 @@
 # WaveBrain for Codex
 
-Codex has no plugin store, so `npx wavebrain-codex install` installs these pieces:
+```sh
+codex plugin marketplace add tambo-ai-labs/wavebrain
+codex plugin add wavebrain@wavebrain
+```
 
-- `[mcp_servers.wavebrain]` in `~/.codex/config.toml`
-- hooks in `~/.codex/hooks.json` (PostToolUse: observe, Stop: flush) and `[features] hooks = true`
-- `skills/wavebrain/SKILL.md` into `~/.codex/skills/wavebrain/`
+Codex reads the API key from `WAVEBRAIN_API_KEY`. Add it to your shell profile (create a key at https://getwavebrain.com/dashboard/setup):
 
-The hook runner itself is `shared/hook.mjs`, staged to `~/.wavebrain/hooks/`.
+```sh
+export WAVEBRAIN_API_KEY=al_...
+```
 
-Codex runs a new hook only after you trust it. After installing, start `codex`, open `/hooks`, and trust the WaveBrain PostToolUse and Stop hooks. (`codex exec --dangerously-bypass-hook-trust` skips this for one run; the e2e script uses it.)
+Codex runs a plugin's hooks only after you trust them: start `codex`, open `/hooks` and trust the WaveBrain PostToolUse and Stop hooks. (After an update changes a hook, Codex asks again.)
+
+What it adds: the `wavebrain` MCP server, the auto-capture hooks (high-stakes commands queued in `~/.wavebrain/queue` and sent at the end of each turn, secrets redacted, skipped when Codex logged the action itself) and a skill telling Codex when to log. Remove it with `codex plugin remove wavebrain@wavebrain`.
+
+The hook runner in `hooks/` is copied from `shared/` by `scripts/sync.mjs`.

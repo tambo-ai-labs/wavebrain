@@ -1,6 +1,6 @@
 {
   "name": "wavebrain-hermes",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Connect Hermes Agent profiles to WaveBrain: MCP server and the WaveBrain plugin.",
   "type": "module",
   "bin": {

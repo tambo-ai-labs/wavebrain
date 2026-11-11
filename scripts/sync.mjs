@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const S = (f) => path.join(ROOT, "shared", f);
-const HARNESSES = ["claude-code", "codex", "cursor", "hermes"];
+const HARNESSES = ["cursor", "hermes"];
 /** Files under a folder, relative to it (recursive). */
 function ls(rel, base = rel) {
   return fs.readdirSync(path.join(ROOT, rel), { withFileTypes: true }).flatMap((e) =>
@@ -25,7 +25,10 @@ const COPIES = [
   [S("SKILL.md"), "plugins/claude-code/skills/wavebrain/SKILL.md"],
   // Hermes plugin
   [S("rules.json"), "plugins/hermes/rules.json"],
-  // Codex skill (hooks are installed by the CLI)
+  // Codex plugin
+  [S("core.mjs"), "plugins/codex/hooks/core.mjs"],
+  [S("hook.mjs"), "plugins/codex/hooks/hook.mjs"],
+  [S("rules.json"), "plugins/codex/hooks/rules.json"],
   [S("SKILL.md"), "plugins/codex/skills/wavebrain/SKILL.md"],
   // What the installers write (packages/core/assets), from shared/ and plugins/hermes
   [S("core.mjs"), "packages/core/assets/hooks/core.mjs"],

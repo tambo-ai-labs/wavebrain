@@ -40,44 +40,45 @@ test("each installer only touches its own agent", async () => {
   write(ctx, ".codex/config.toml", 'model = "o3"\n');
   write(ctx, ".hermes/config.yaml", "model: x\n");
   const out = io();
-  assert.equal(await runHarness("codex", ["install", "--key", KEY], ctx, out), 0);
-  assert.match(read(ctx, ".codex/config.toml"), /\[mcp_servers\.wavebrain\]/);
-  assert.ok(has(ctx, ".codex/hooks.json"));
+  assert.equal(await runHarness("cursor", ["install", "--key", KEY], ctx, out), 0);
+  assert.match(read(ctx, ".cursor/mcp.json"), /wavebrain/);
+  assert.ok(has(ctx, ".cursor/hooks.json"));
   assert.ok(!has(ctx, ".claude.json"));
-  assert.ok(!has(ctx, ".cursor/mcp.json"));
+  assert.equal(read(ctx, ".codex/config.toml"), 'model = "o3"\n');
   assert.doesNotMatch(read(ctx, ".hermes/config.yaml"), /wavebrain/);
-  assert.match(out.text(), /Undo with: npx wavebrain-codex uninstall/);
-  assert.match(out.text(), /trust the two WaveBrain hooks/);
+  assert.match(out.text(), /Undo with: npx wavebrain-cursor uninstall/);
   assert.ok(!out.text().includes(KEY));
 });
 
 test("install is the default command; uninstall keeps the hook runner while another agent needs it", async () => {
   const ctx = sandbox();
+  write(ctx, ".hermes/config.yaml", "model: x\n");
   assert.equal(await runHarness("cursor", ["--key", KEY], ctx, io()), 0);
-  assert.equal(await runHarness("claude-code", ["install", "--key", KEY, "--yes"], ctx, io()), 0);
+  assert.equal(await runHarness("hermes", ["install", "--key", KEY, "--yes"], ctx, io()), 0);
   assert.ok(has(ctx, ".cursor/hooks.json"));
-  assert.ok(has(ctx, ".wavebrain/hooks/hook.mjs"));
+  assert.ok(has(ctx, ".wavebrain/config.json"));
 
   assert.equal(await runHarness("cursor", ["uninstall", "--yes"], ctx, io()), 0);
   assert.ok(!has(ctx, ".cursor/mcp.json"));
   assert.ok(!has(ctx, ".cursor/hooks.json"));
-  assert.ok(has(ctx, ".wavebrain/hooks/hook.mjs"), "Claude Code still uses the hook runner");
-  assert.match(read(ctx, ".claude.json"), /wavebrain/);
+  assert.ok(has(ctx, ".wavebrain/config.json"), "Hermes still uses the shared config");
+  assert.match(read(ctx, ".hermes/config.yaml"), /wavebrain/);
 
   const st = io();
-  assert.equal(await runHarness("claude-code", ["status"], ctx, st), 0);
-  assert.match(st.text(), /Claude Code\s+\S+\s+configured \(by WaveBrain\)/);
+  assert.equal(await runHarness("hermes", ["status"], ctx, st), 0);
+  assert.match(st.text(), /Hermes Agent\s+\S+\s+configured \(by WaveBrain\)/);
   assert.doesNotMatch(st.text(), /Cursor/);
 
-  assert.equal(await runHarness("claude-code", ["uninstall", "--yes"], ctx, io()), 0);
+  assert.equal(await runHarness("hermes", ["uninstall", "--yes"], ctx, io()), 0);
   assert.ok(!has(ctx, ".wavebrain"), "last agent gone: hook runner, key and state removed");
 });
 
-test("uninstall with nothing installed says so", async () => {
+test("uninstall with nothing installed says so; removed harnesses aren't installers", async () => {
   const ctx = sandbox();
   const out = io();
-  assert.equal(await runHarness("codex", ["uninstall", "--yes"], ctx, out), 0);
+  assert.equal(await runHarness("cursor", ["uninstall", "--yes"], ctx, out), 0);
   assert.match(out.text(), /Nothing to remove/);
+  await assert.rejects(() => runHarness("codex", ["install"], ctx, io()), /unknown harness/);
 });
 
 test("hermes: --profile, default, --all-profiles, and the interactive picker", async () => {
@@ -121,13 +122,13 @@ test("hermes: --profile, default, --all-profiles, and the interactive picker", a
 test("options: --profile is Hermes-only, unknown flags print help, --no-hooks, --dry-run", async () => {
   const ctx = sandbox();
   const a = io();
-  assert.equal(await runHarness("codex", ["install", "--profile", "x"], ctx, a), 2);
+  assert.equal(await runHarness("cursor", ["install", "--profile", "x"], ctx, a), 2);
   const b = io();
-  assert.equal(await runHarness("codex", ["install", "--agent", "cursor"], ctx, b), 2);
-  assert.match(b.text(), /Usage:\n  npx wavebrain-codex install/);
+  assert.equal(await runHarness("cursor", ["install", "--agent", "codex"], ctx, b), 2);
+  assert.match(b.text(), /Usage:\n  npx wavebrain-cursor install/);
 
-  assert.equal(await runHarness("codex", ["install", "--no-hooks", "--key", KEY], ctx, io()), 0);
-  assert.ok(!has(ctx, ".codex/hooks.json"));
+  assert.equal(await runHarness("cursor", ["install", "--no-hooks", "--key", KEY], ctx, io()), 0);
+  assert.ok(!has(ctx, ".cursor/hooks.json"));
   assert.ok(!has(ctx, ".wavebrain/config.json"));
 
   const ctx2 = sandbox();

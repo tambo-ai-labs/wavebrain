@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wavebrain": {
+      "url": "https://getwavebrain.com/api/mcp",
+      "bearer_token_env_var": "WAVEBRAIN_API_KEY"
+    }
+  }
+}

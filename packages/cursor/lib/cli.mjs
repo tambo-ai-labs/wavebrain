@@ -6,7 +6,7 @@ import { loadState, ownedBy, saveState, statePath } from "./state.mjs";
 import { stageCapture, unstageCapture } from "./capture.mjs";
 import { KEY_ENV, allTargets, targetById, tilde } from "./targets.mjs";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 const DEFAULT_URL = "https://getwavebrain.com/api/mcp";
 const SETUP_URL = "https://getwavebrain.com/dashboard/setup";
 
@@ -196,7 +196,10 @@ export async function init(o, ctx, io) {
 
   if (!o.dryRun) saveState(ctx, state);
   if (nextSteps.length) io.out(`\nNext:\n${nextSteps.map((s) => `  ${s}`).join("\n")}`);
-  if (!o.dryRun && session.changes.some((c) => c.backup)) io.out(`\nBackups end in .bak-wavebrain. Undo with: ${o.undo ?? "npx wavebrain remove"}`);
+  if (!o.dryRun && session.changes.length) {
+    const backups = session.changes.some((c) => c.backup) ? "Backups end in .bak-wavebrain. " : "";
+    io.out(`\n${backups}Undo with: ${o.undo ?? "npx wavebrain remove"}`);
+  }
   return failed ? 1 : 0;
 }
 

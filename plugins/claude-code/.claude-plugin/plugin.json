@@ -1,6 +1,6 @@
 {
   "name": "wavebrain",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Logs your agent's real-world actions to WaveBrain, the audit log of what your AI agents did.",
   "author": {
     "name": "Tambo Labs",
@@ -14,5 +14,16 @@
     "mcp",
     "wavebrain"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "WaveBrain API key",
+      "description": "Starts with al_. Create one at https://getwavebrain.com/dashboard/setup",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "privacyPolicyUrl": "https://getwavebrain.com/privacy",
+  "repository": "https://github.com/tambo-ai-labs/wavebrain"
 }

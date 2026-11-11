@@ -1,5 +1,5 @@
-// One installer per agent harness: wavebrain-claude-code, wavebrain-codex, wavebrain-cursor and
-// wavebrain-hermes. Each is a thin front end over the shared engine in cli.mjs, limited to its
+// Installers for the agents with no plugin marketplace that covers WaveBrain: wavebrain-cursor and
+// wavebrain-hermes (Claude Code and Codex install the plugin from their own marketplaces). Each is a thin front end over the shared engine in cli.mjs, limited to its
 // own agent's targets, with install / uninstall / status.
 
 import { UsageError, VERSION, defaultCtx, defaultIo, init, pick, remove, status } from "./cli.mjs";
@@ -10,18 +10,6 @@ const SETUP_URL = "https://getwavebrain.com/dashboard/setup";
 
 /** The harness installers. `targets(ctx, o, io)` returns the engine targets to act on. */
 export const HARNESSES = {
-  "claude-code": {
-    label: "Claude Code",
-    gets: "the WaveBrain MCP server, auto-capture hooks and a when-to-log skill",
-    options: `  --no-claude-permission  Don't pre-approve WaveBrain's tools (mcp__wavebrain__*), so
-                          narrow --allowedTools runs (claude -p) can't log`,
-    targets: (ctx) => [targetById(ctx, "claude-code")],
-  },
-  codex: {
-    label: "Codex CLI",
-    gets: "the WaveBrain MCP server, auto-capture hooks and a when-to-log skill",
-    targets: (ctx) => [targetById(ctx, "codex")],
-  },
   cursor: {
     label: "Cursor",
     gets: "the WaveBrain MCP server and auto-capture hooks",

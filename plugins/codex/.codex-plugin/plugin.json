@@ -1,0 +1,31 @@
+{
+  "name": "wavebrain",
+  "version": "0.4.0",
+  "description": "Logs your agent's deploys, pushes, releases, emails, payments and other real-world actions to WaveBrain.",
+  "author": {
+    "name": "Tambo Labs",
+    "email": "support@tambolabs.com",
+    "url": "https://getwavebrain.com"
+  },
+  "homepage": "https://getwavebrain.com",
+  "repository": "https://github.com/tambo-ai-labs/wavebrain",
+  "license": "UNLICENSED",
+  "keywords": [
+    "audit-log",
+    "agents",
+    "mcp",
+    "wavebrain"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "WaveBrain",
+    "shortDescription": "A record of what your AI agents did",
+    "developerName": "Tambo Labs",
+    "category": "Productivity",
+    "websiteURL": "https://getwavebrain.com",
+    "privacyPolicyURL": "https://getwavebrain.com/privacy",
+    "termsOfServiceURL": "https://getwavebrain.com/terms"
+  }
+}

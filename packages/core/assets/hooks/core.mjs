@@ -39,7 +39,8 @@ export function loadConfig(env = process.env) {
     cfg = JSON.parse(fs.readFileSync(path.join(home(env), "config.json"), "utf8"));
   } catch {}
   return {
-    apiKey: env.WAVEBRAIN_API_KEY || cfg.apiKey || null,
+    // Claude Code plugin: the key from the plugin's own prompt, stored in the system keychain.
+    apiKey: env.WAVEBRAIN_API_KEY || env.CLAUDE_PLUGIN_OPTION_API_KEY || cfg.apiKey || null,
     apiUrl: env.WAVEBRAIN_API_URL || cfg.apiUrl || DEFAULT_API_URL,
     enabled: env.WAVEBRAIN_HOOKS !== "off" && cfg.autoCapture !== false,
   };

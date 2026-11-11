@@ -1,7 +1,7 @@
 {
   "name": "wavebrain",
-  "version": "0.3.0",
-  "description": "WaveBrain, the audit log of what your AI agents do. Points you to the installer for your agent.",
+  "version": "0.4.0",
+  "description": "WaveBrain, the audit log of what your AI agents do. Prints how to set it up for each agent.",
   "type": "module",
   "bin": {
     "wavebrain": "bin/wavebrain.mjs"

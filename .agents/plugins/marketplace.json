@@ -1,0 +1,20 @@
+{
+  "name": "wavebrain",
+  "interface": {
+    "displayName": "WaveBrain"
+  },
+  "plugins": [
+    {
+      "name": "wavebrain",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
