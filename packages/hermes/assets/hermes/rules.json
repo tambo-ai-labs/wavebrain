@@ -1,0 +1,31 @@
+{
+  "$comment": "Shell commands that are recorded automatically. Each rule: regex (case-insensitive, matched against the whole command), WaveBrain action type, and a title template ({cmd} = first matching command segment). Shared by every plugin; edit here, then run `node scripts/sync.mjs`.",
+  "version": 1,
+  "shell": [
+    { "id": "git-push", "pattern": "(^|[\\s;&|(])git\\s+push\\b", "type": "push", "title": "Pushed to git: {cmd}" },
+    { "id": "git-commit", "pattern": "(^|[\\s;&|(])git\\s+commit\\b", "type": "commit", "title": "Made a git commit: {cmd}" },
+    { "id": "gh-pr-create", "pattern": "(^|[\\s;&|(])gh\\s+pr\\s+create\\b", "type": "pull_request", "title": "Opened a pull request: {cmd}" },
+    { "id": "gh-pr-merge", "pattern": "(^|[\\s;&|(])gh\\s+pr\\s+merge\\b", "type": "merge", "title": "Merged a pull request: {cmd}" },
+    { "id": "gh-release", "pattern": "(^|[\\s;&|(])gh\\s+release\\s+create\\b", "type": "release", "title": "Created a GitHub release: {cmd}" },
+    { "id": "vercel-deploy", "pattern": "(^|[\\s;&|(])(npx\\s+)?vercel\\b[^;&|]*(\\s--prod\\b|\\sdeploy\\b|\\sredeploy\\b|\\spromote\\b)", "type": "deploy", "title": "Deployed with Vercel: {cmd}" },
+    { "id": "vercel-env", "pattern": "(^|[\\s;&|(])(npx\\s+)?vercel\\s+env\\s+(add|rm|remove|update)\\b", "type": "file_change", "title": "Changed Vercel environment variables: {cmd}" },
+    { "id": "railway", "pattern": "(^|[\\s;&|(])railway\\s+(up|deploy|redeploy|variables\\s+--set|variable\\s+set)\\b", "type": "deploy", "title": "Deployed with Railway: {cmd}" },
+    { "id": "fly", "pattern": "(^|[\\s;&|(])(fly|flyctl)\\s+(deploy|secrets\\s+set)\\b", "type": "deploy", "title": "Deployed with Fly.io: {cmd}" },
+    { "id": "wrangler", "pattern": "(^|[\\s;&|(])(npx\\s+)?wrangler\\s+(deploy|publish|secret\\s+put)\\b", "type": "deploy", "title": "Deployed with Cloudflare Wrangler: {cmd}" },
+    { "id": "netlify", "pattern": "(^|[\\s;&|(])netlify\\s+deploy\\b", "type": "deploy", "title": "Deployed with Netlify: {cmd}" },
+    { "id": "kubectl", "pattern": "(^|[\\s;&|(])kubectl\\s+(apply|rollout|delete|scale|set)\\b", "type": "deploy", "title": "Changed Kubernetes: {cmd}" },
+    { "id": "terraform", "pattern": "(^|[\\s;&|(])(terraform|tofu)\\s+(apply|destroy)\\b", "type": "deploy", "title": "Applied infrastructure changes: {cmd}" },
+    { "id": "docker-push", "pattern": "(^|[\\s;&|(])docker\\s+(push|buildx\\s+build[^;&|]*--push)\\b", "type": "publish", "title": "Pushed a Docker image: {cmd}" },
+    { "id": "npm-publish", "pattern": "(^|[\\s;&|(])(npm|pnpm|yarn|bun)\\s+publish\\b", "type": "publish", "title": "Published a package: {cmd}" },
+    { "id": "eas", "pattern": "(^|[\\s;&|(])(npx\\s+)?eas\\s+(submit|update|build)\\b", "type": "release", "title": "Shipped a mobile build with EAS: {cmd}" },
+    { "id": "xcrun-altool", "pattern": "(^|[\\s;&|(])xcrun\\s+altool\\b[^;&|]*--upload|(^|[\\s;&|(])fastlane\\s+(deliver|pilot|upload_to|release)", "type": "release", "title": "Uploaded an app build: {cmd}" },
+    { "id": "stripe", "pattern": "(^|[\\s;&|(])stripe\\s+(products|prices|customers|subscriptions|refunds|payment_intents|webhook_endpoints)\\s+(create|update|delete|cancel)\\b", "type": "api_call", "title": "Changed Stripe: {cmd}" },
+    { "id": "db-migrate", "pattern": "(^|[\\s;&|(])((npx\\s+)?(prisma\\s+migrate\\s+deploy|drizzle-kit\\s+(migrate|push))|(pnpm|npm|yarn)\\s+(run\\s+)?db:(migrate|push))\\b", "type": "database", "title": "Ran database migrations: {cmd}" },
+    { "id": "psql-write", "pattern": "(^|[\\s;&|(])psql\\b[^;&|]*\\b(insert\\s+into|update\\s+\\w+\\s+set|delete\\s+from|drop\\s+table|alter\\s+table|truncate)\\b", "type": "database", "title": "Changed a database: {cmd}" },
+    { "id": "curl-write", "pattern": "(^|[\\s;&|(])curl\\b[^;&|]*\\s(-X|--request)\\s*(POST|PUT|PATCH|DELETE)\\b", "type": "api_call", "title": "Called an API: {cmd}" },
+    { "id": "send-mail", "pattern": "(^|[\\s;&|(])(sendmail|mail|mutt|himalaya\\s+(send|message\\s+send))\\b", "type": "email", "title": "Sent an email: {cmd}" }
+  ],
+  "$comment_mcp": "MCP tool calls are recorded when the tool name matches one of these (after the mcp__<server>__ prefix). Read-only tools (list, get, search, read, fetch) are skipped.",
+  "mcp_write_verbs": ["create", "update", "delete", "remove", "send", "post", "publish", "deploy", "merge", "push", "submit", "cancel", "refund", "charge", "invite", "set", "add", "upload", "write", "reply", "comment", "approve", "close", "archive"],
+  "mcp_skip_servers": ["wavebrain", "context-mode", "plugin_context-mode_context-mode", "claude-in-chrome", "honcho"]
+}

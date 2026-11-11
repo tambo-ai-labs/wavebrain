@@ -1,0 +1,32 @@
+{
+  "name": "wavebrain-cursor",
+  "version": "0.3.0",
+  "description": "Connect Cursor to WaveBrain: MCP server and auto-capture hooks.",
+  "type": "module",
+  "bin": {
+    "wavebrain-cursor": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "assets",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "audit-log",
+    "wavebrain",
+    "cursor"
+  ],
+  "homepage": "https://getwavebrain.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GuillermoCoding/wavebrain.git",
+    "directory": "packages/cursor"
+  },
+  "license": "UNLICENSED"
+}

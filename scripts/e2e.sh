@@ -1,5 +1,5 @@
 #!/bin/bash
-# Real end-to-end checks against a mock WaveBrain API, with each agent set up by our own `init`.
+# Real end-to-end checks against a mock WaveBrain API, with each agent set up by our own installers.
 #   bash scripts/e2e.sh codex      (needs codex logged in)
 #   bash scripts/e2e.sh claude     (needs claude logged in)
 # Everything is written under a temp dir; your real agent configs are not touched.
@@ -29,18 +29,18 @@ sleep 1
 mkdir repo && cd repo && git init -q && git commit -q --allow-empty -m init && cd ..
 KEY=al_e2e_test_key_000000000000000000
 export WAVEBRAIN_HOME="$T/wb"
-INIT="node $ROOT/packages/cli/bin/wavebrain.mjs init --key $KEY --url http://127.0.0.1:$PORT/api/mcp --yes"
+inst() { local h="$1"; shift; node "$ROOT/packages/$h/bin/cli.mjs" install --key $KEY --url http://127.0.0.1:$PORT/api/mcp --yes "$@"; }
 
 if [ "$WHICH" = codex ]; then
   export CODEX_HOME="$T/codex-home"; mkdir -p "$CODEX_HOME"
   cp ~/.codex/auth.json "$CODEX_HOME/auth.json"
-  HOME="$T" $INIT --agent codex | sed 's/^/  init: /'
+  HOME="$T" inst codex | sed 's/^/  install: /'
   echo "--- hooks.json:"; cat "$CODEX_HOME/hooks.json"
   cd repo
   codex exec ${CODEX_EXTRA:---dangerously-bypass-hook-trust} --skip-git-repo-check -s danger-full-access -c approval_policy='"never"' \
     'Run these shell commands one at a time: `ls`, then `git push --dry-run origin main` (it will fail, that is fine). Then reply DONE.' 2>&1 | tail -5 | sed 's/^/  codex: /'
 elif [ "$WHICH" = claude ]; then
-  HOME="$T" CLAUDE_CONFIG_DIR="$T/.claude" $INIT --agent claude-code --no-claude-permission | sed 's/^/  init: /'
+  HOME="$T" CLAUDE_CONFIG_DIR="$T/.claude" inst claude-code --no-claude-permission | sed 's/^/  install: /'
   cd repo
   # Use the settings file init wrote (auth stays in the real login).
   claude -p 'Run these bash commands one at a time: `ls`, then `git commit -q --allow-empty -m e2e`, then `git push --dry-run origin main` (it will fail, that is fine). Then reply DONE.' \
@@ -54,7 +54,7 @@ elif [ "$WHICH" = claude-plugin ]; then
 elif [[ "$WHICH" == hermes:* ]]; then
   # A real Hermes profile (pass a throwaway one, e.g. hermes profile create wbtest --clone).
   PROFILE="${WHICH#hermes:}"
-  $INIT --agent "hermes:$PROFILE" | sed 's/^/  init: /'
+  env -u HERMES_HOME node "$ROOT/packages/hermes/bin/cli.mjs" install --key $KEY --url http://127.0.0.1:$PORT/api/mcp --yes --profile "$PROFILE" | sed 's/^/  install: /'
   echo "  plugins.enabled has wavebrain: $(grep -A5 '^plugins:' ~/.hermes/profiles/$PROFILE/config.yaml | grep -c wavebrain)"
   cd repo
   env -u HERMES_HOME hermes -p "$PROFILE" chat -Q -q "Use the terminal tool to run these commands in $T/repo, one at a time: \`ls\`, then \`git commit -q --allow-empty -m hermes-e2e\`, then \`git push --dry-run origin main\` (it will fail, that's expected). Don't call any WaveBrain tools. Then reply DONE." 2>&1 | tail -3 | sed 's/^/  hermes: /'

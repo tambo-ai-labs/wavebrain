@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/sync.mjs --check && node --test test/ packages/cli/test/",
+    "test": "node scripts/sync.mjs --check && node --test test/ packages/core/test/",
     "sync": "node scripts/sync.mjs"
   }
 }

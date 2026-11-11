@@ -1,24 +1,21 @@
 # WaveBrain agent integrations
 
-Everything that connects AI agents to [WaveBrain](https://getwavebrain.com), the audit log of what your agents did: the `npx wavebrain init` installer and a plugin for every agent platform, in one repo.
+Everything that connects AI agents to [WaveBrain](https://getwavebrain.com), the audit log of what your agents did: a one-command installer and a plugin for each agent platform, in one repo.
 
-```sh
-npx wavebrain init
-```
+Each agent harness has its own installer:
 
-`init` finds the agents on this machine, asks which to connect, and installs everything each one supports:
+| Agent | Install | What it adds |
+| --- | --- | --- |
+| Claude Code | `npx wavebrain-claude-code install` | MCP server in `~/.claude.json`; hooks (PostToolUse, PostToolUseFailure, Stop, SessionEnd) in `~/.claude/settings.json`; skill in `~/.claude/skills/wavebrain` |
+| Codex CLI | `npx wavebrain-codex install` | MCP server in `~/.codex/config.toml`; hooks in `~/.codex/hooks.json` + `[features] hooks = true`; skill in `~/.codex/skills/wavebrain` |
+| Cursor | `npx wavebrain-cursor install` | MCP server in `~/.cursor/mcp.json`; hooks in `~/.cursor/hooks.json` |
+| Hermes Agent | `npx wavebrain-hermes install [--profile <name>] [--all-profiles]` | MCP server in each profile's `config.yaml`; key in its `.env`; plugin in `<profile>/plugins/wavebrain` |
 
-| Agent | MCP server | Auto-capture hooks | When-to-log instructions |
-| --- | --- | --- | --- |
-| Claude Code | `~/.claude.json` | `~/.claude/settings.json` (PostToolUse, PostToolUseFailure, Stop, SessionEnd) | skill in `~/.claude/skills/wavebrain` |
-| Codex CLI | `~/.codex/config.toml` | `~/.codex/hooks.json` (PostToolUse, Stop) + `[features] hooks = true` | skill in `~/.codex/skills/wavebrain` |
-| Cursor | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` (postToolUse, stop) | MCP server instructions |
-| Hermes Agent | each profile's `config.yaml` | plugin in `<profile>/plugins/wavebrain` (post_tool_call, on_session_end) | plugin system-prompt section |
-| Windsurf, VS Code, Claude Desktop | their MCP config | no hook support | MCP server instructions |
+Windsurf, VS Code and Claude Desktop only need the MCP server, so they have no installer: the setup page at getwavebrain.com/dashboard/setup has copy-paste config and one-click links. `npx wavebrain` lists these commands and marks the agents it finds.
 
-**Codex** reviews new hooks before running them: after `init`, start `codex`, open `/hooks` and trust the two WaveBrain hooks. Until then Codex still has the MCP server, just not auto-capture.
+Every installer has `install`, `status` and `uninstall` (which undoes exactly what install added), plus `--no-hooks` (MCP server only), `--dry-run` and `--key`.
 
-`npx wavebrain remove` undoes exactly what `init` added. `--no-hooks` installs the MCP server only.
+**Codex** reviews new hooks before running them: after installing, start `codex`, open `/hooks` and trust the two WaveBrain hooks. Until then Codex still has the MCP server, just not auto-capture.
 
 ## Why hooks
 
@@ -33,22 +30,27 @@ Secrets (Stripe, GitHub, npm, AWS, OpenAI/Anthropic, Slack, JWTs, bearer tokens,
 
 ```
 .claude-plugin/marketplace.json   Claude Code marketplace (lists plugins/claude-code)
-packages/cli/                     npx wavebrain (npm: wavebrain)
+packages/claude-code/             npx wavebrain-claude-code (npm: wavebrain-claude-code)
+packages/codex/                   npx wavebrain-codex
+packages/cursor/                  npx wavebrain-cursor
+packages/hermes/                  npx wavebrain-hermes
+packages/wavebrain/               npx wavebrain: points to the installers above
+packages/core/                    the engine all four share (not published; copied into each lib/)
 plugins/claude-code/              Claude Code plugin: MCP + hooks + skill
 plugins/hermes/                   Hermes plugin: hooks + system-prompt section (Python)
-plugins/codex/                    Codex skill (hooks are installed by the CLI)
+plugins/codex/                    Codex skill
 shared/                           the one copy of the hook runner, rules, and skill
-scripts/sync.mjs                  copies shared/ into every plugin and the CLI package
+scripts/sync.mjs                  copies shared/ and packages/core into every plugin and installer
 ```
 
-Edit `shared/` (or `plugins/hermes/__init__.py`), then run `node scripts/sync.mjs`. The tests fail if a copy is out of date.
+Edit `shared/`, `plugins/hermes/__init__.py` or `packages/core/src`, then run `node scripts/sync.mjs`. The tests fail if a copy is out of date.
 
 ## Other ways to install
 
 - **Claude Code marketplace:** `/plugin marketplace add GuillermoCoding/wavebrain`, then `/plugin install wavebrain@wavebrain`. Set `WAVEBRAIN_API_KEY`.
 - **Hermes:** `hermes plugins install GuillermoCoding/wavebrain#plugins/hermes`, then `hermes plugins enable wavebrain`.
 
-Use one route per agent; installing both the marketplace plugin and `init`'s hooks would capture twice (duplicates are collapsed, but don't rely on it).
+Use one route per agent; installing both the marketplace plugin and the installer's hooks would capture twice (duplicates are collapsed, but don't rely on it).
 
 (The repo is private for now; those two routes need it public.)
 
@@ -57,5 +59,5 @@ Use one route per agent; installing both the marketplace plugin and `init`'s hoo
 ```sh
 npm test                 # shared core, Hermes parity, CLI
 node scripts/sync.mjs    # after editing shared/
-bash scripts/e2e-claude-code.sh "$PWD/shared/hook.mjs"   # real Claude Code run against a mock API
+bash scripts/e2e.sh claude|claude-plugin|codex|hermes:<profile>   # real agent runs against a mock API
 ```

@@ -1,6 +1,6 @@
 # WaveBrain for Cursor
 
-`npx wavebrain init --agent cursor` installs:
+`npx wavebrain-cursor install` installs:
 
 - the `wavebrain` MCP server in `~/.cursor/mcp.json`
 - hooks in `~/.cursor/hooks.json`: `postToolUse` (matcher `Shell|MCP`) records high-stakes actions, `stop` sends them

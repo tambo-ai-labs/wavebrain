@@ -1,0 +1,29 @@
+{
+  "name": "wavebrain",
+  "version": "0.3.0",
+  "description": "WaveBrain, the audit log of what your AI agents do. Points you to the installer for your agent.",
+  "type": "module",
+  "bin": {
+    "wavebrain": "bin/wavebrain.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "audit-log",
+    "wavebrain"
+  ],
+  "homepage": "https://getwavebrain.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GuillermoCoding/wavebrain.git",
+    "directory": "packages/wavebrain"
+  },
+  "license": "UNLICENSED"
+}

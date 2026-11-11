@@ -1,0 +1,33 @@
+{
+  "name": "wavebrain-hermes",
+  "version": "0.3.0",
+  "description": "Connect Hermes Agent profiles to WaveBrain: MCP server and the WaveBrain plugin.",
+  "type": "module",
+  "bin": {
+    "wavebrain-hermes": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "assets",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "audit-log",
+    "wavebrain",
+    "hermes",
+    "hermes-agent"
+  ],
+  "homepage": "https://getwavebrain.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GuillermoCoding/wavebrain.git",
+    "directory": "packages/hermes"
+  },
+  "license": "UNLICENSED"
+}
