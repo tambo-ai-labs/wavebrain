@@ -1,7 +1,7 @@
 # WaveBrain for Claude Code
 
 ```
-/plugin marketplace add GuillermoCoding/wavebrain
+/plugin marketplace add tambo-ai-labs/wavebrain
 /plugin install wavebrain@wavebrain
 ```
 

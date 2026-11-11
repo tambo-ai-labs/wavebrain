@@ -22,7 +22,7 @@
   "homepage": "https://getwavebrain.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GuillermoCoding/wavebrain.git",
+    "url": "git+https://github.com/tambo-ai-labs/wavebrain.git",
     "directory": "packages/wavebrain"
   },
   "license": "UNLICENSED"

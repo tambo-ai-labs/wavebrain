@@ -47,8 +47,8 @@ Edit `shared/`, `plugins/hermes/__init__.py` or `packages/core/src`, then run `n
 
 ## Other ways to install
 
-- **Claude Code marketplace:** `/plugin marketplace add GuillermoCoding/wavebrain`, then `/plugin install wavebrain@wavebrain`. Set `WAVEBRAIN_API_KEY`.
-- **Hermes:** `hermes plugins install GuillermoCoding/wavebrain#plugins/hermes`, then `hermes plugins enable wavebrain`.
+- **Claude Code marketplace:** `/plugin marketplace add tambo-ai-labs/wavebrain`, then `/plugin install wavebrain@wavebrain`. Set `WAVEBRAIN_API_KEY`.
+- **Hermes:** `hermes plugins install tambo-ai-labs/wavebrain#plugins/hermes`, then `hermes plugins enable wavebrain`.
 
 Use one route per agent; installing both the marketplace plugin and the installer's hooks would capture twice (duplicates are collapsed, but don't rely on it).
 
