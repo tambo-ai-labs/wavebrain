@@ -22,6 +22,7 @@ How to write the entry:
 - `details`: what changed, why, and the result, including anything that failed or is unfinished. Don't repeat the title.
 - `status`: `failure` if it didn't work, `pending` if it's waiting on someone.
 - Never include secrets, passwords, one-time codes, API keys or full card/account numbers.
+- `agent`: your tool's name, the same every time (e.g. "claude-code"). If the user runs several bots on the same tool, use "<tool>-<bot or profile name>", e.g. "hermes-seo-manager", so each bot shows up separately, and pass the bot's display name as `bot` (e.g. "Head of SEO").
 - For a multi-step task, call `start_session` first, pass its `session_id` to each `log_action`, and call `end_session` when done.
 
 A WaveBrain hook also records high-stakes commands automatically as a safety net. When you log the action yourself, your entry replaces the automatic one, so a clear `log_action` is always better.

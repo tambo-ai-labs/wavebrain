@@ -6,7 +6,7 @@ import { loadState, ownedBy, saveState, statePath } from "./state.mjs";
 import { stageCapture, unstageCapture } from "./capture.mjs";
 import { KEY_ENV, allTargets, targetById, tilde } from "./targets.mjs";
 
-export const VERSION = "0.4.1";
+export const VERSION = "0.4.2";
 const DEFAULT_URL = "https://getwavebrain.com/api/mcp";
 const SETUP_URL = "https://getwavebrain.com/dashboard/setup";
 

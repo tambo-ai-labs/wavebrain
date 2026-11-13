@@ -17,7 +17,7 @@ const AGENTS = [
 ];
 const arg = process.argv[2];
 if (arg === "-v" || arg === "--version") {
-  console.log("0.4.1");
+  console.log("0.4.2");
   process.exit(0);
 }
 const found = AGENTS.filter(([, , d]) => d());

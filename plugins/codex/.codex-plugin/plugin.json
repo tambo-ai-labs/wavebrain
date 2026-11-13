@@ -1,6 +1,6 @@
 {
   "name": "wavebrain",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Logs your agent's deploys, pushes, releases, emails, payments and other real-world actions to WaveBrain.",
   "author": {
     "name": "Tambo Labs",

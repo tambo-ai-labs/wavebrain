@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { classify, flush, fromHookInput, loadRules, observe, queueFile, redact } from "../shared/core.mjs";
+import { classify, commandDir, flush, fromHookInput, gitTitle, loadRules, observe, pushedBranch, queueFile, readGit, redact } from "../shared/core.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rules = loadRules();
@@ -145,4 +145,96 @@ test("Cursor's MCP:<tool> names: writes recorded, WaveBrain's own tools skipped,
   assert.equal(classify(rules, { toolName: "MCP:start_session", toolInput: {} }), null);
   assert.equal(isAgentLog("MCP:log_action", {}), true);
   assert.equal(isAgentLog("MCP:create_refund", {}), false);
+});
+
+test("git push/commit titles name the repo, branch and latest commit subject", () => {
+  const git = () => ({ repo: "getwavebrain", branch: "main", subject: "Fix the login redirect" });
+  const t = (command, extra = {}) => classify(rules, { toolName: "Bash", toolInput: { command }, cwd: "/w/app", ...extra }, { readGit: git }).title;
+  assert.equal(t("git push origin main"), "Pushed to getwavebrain/main: Fix the login redirect");
+  assert.equal(t("git push -u origin feat/x"), "Pushed to getwavebrain/feat/x: Fix the login redirect");
+  assert.equal(t("git push origin HEAD:release"), "Pushed to getwavebrain/release: Fix the login redirect");
+  assert.equal(t('git commit -m "Fix"'), "Committed to getwavebrain: Fix the login redirect");
+  // Fallbacks: no repo info, or a failed command (a failed commit would show the previous one).
+  assert.equal(classify(rules, { toolName: "Bash", toolInput: { command: "git push" }, cwd: "/w" }, { readGit: () => null }).title, "Pushed to git: git push");
+  assert.equal(t('git commit -m "Fix"', { failed: true }), 'Made a git commit: git commit -m "Fix"');
+  // Detached HEAD: no branch.
+  assert.equal(gitTitle("Pushed to {repo}/{branch}: {subject}", "git-push", "git push", { repo: "r", branch: "", subject: "s" }), "Pushed to r: s");
+  // Secrets in a commit subject are redacted.
+  assert.doesNotMatch(gitTitle("Committed to {repo}: {subject}", "git-commit", "git commit", { repo: "r", branch: "m", subject: "use sk_live_abcdefghijkl1234" }), /sk_live/);
+});
+
+test("the git directory follows cd, and readGit reads a real repo (and worktree name) or returns null", () => {
+  assert.equal(commandDir("cd /a/b && ", "/x"), "/a/b");
+  assert.equal(commandDir("cd sub && ", "/x"), "/x/sub");
+  assert.equal(commandDir("cd ~/r; ", "/x", { HOME: "/h" }), "/h/r");
+  assert.equal(commandDir("", undefined), null);
+  assert.equal(pushedBranch("git push"), null);
+  assert.equal(pushedBranch("git push --force-with-lease origin +refs/heads/dev"), "dev");
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wb-git-"));
+  const repo = path.join(dir, "myrepo");
+  const g = (...a) => execFileSync("git", a, { cwd: repo, stdio: "ignore", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } });
+  fs.mkdirSync(repo);
+  g("init", "-q", "-b", "trunk");
+  g("commit", "-q", "--allow-empty", "-m", "First commit");
+  assert.deepEqual(readGit(repo), { repo: "myrepo", branch: "trunk", subject: "First commit" });
+  g("worktree", "add", "-q", "-b", "side", path.join(dir, "myrepo-wt"));
+  assert.deepEqual(readGit(path.join(dir, "myrepo-wt")), { repo: "myrepo", branch: "side", subject: "First commit" });
+  assert.equal(readGit(dir), null);
+  assert.equal(readGit(path.join(dir, "missing")), null);
+});
+
+test("the Hermes plugin makes the same git titles and tells the model its agent name", () => {
+  const py = `
+import sys, json, os; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, "plugins"))})
+import hermes as h
+git = lambda d: {"repo": "getwavebrain", "branch": "main", "subject": "Fix the login redirect"}
+out = [h.classify("terminal", {"command": c}, "/w/app", False, git)["title"] for c in json.loads(sys.argv[1])]
+out.append(h.classify("terminal", {"command": "git push"}, "/w", False, lambda d: None)["title"])
+names = []
+for home, prof in [("/u/.hermes", ""), ("/u/.hermes/profiles/head-of-growth", ""), ("/u/.hermes", "SEO Manager")]:
+    os.environ["HERMES_HOME"] = home
+    os.environ["HERMES_PROFILE"] = prof
+    names.append(h.agent_name())
+print(json.dumps({"titles": out, "names": names, "instr": h.instruction("hermes-seo-manager")}))`;
+  const cmds = ["git push origin main", "git push -u origin feat/x", 'git commit -m "Fix"'];
+  const out = JSON.parse(execFileSync("python3", ["-c", py, JSON.stringify(cmds)], { encoding: "utf8" }));
+  const node = cmds.map((command) => classify(rules, { toolName: "Bash", toolInput: { command }, cwd: "/w/app" }, { readGit: () => ({ repo: "getwavebrain", branch: "main", subject: "Fix the login redirect" }) }).title);
+  assert.deepEqual(out.titles, [...node, "Pushed to git: git push"]);
+  assert.deepEqual(out.names, ["hermes", "hermes-head-of-growth", "hermes-seo-manager"]);
+  assert.match(out.instr, /agent="hermes-seo-manager"/);
+});
+
+test("the Hermes plugin reads the bot's real name from the profile and sends it", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wb-hermes-bot-"));
+  const titled = path.join(dir, "profiles", "head-of-growth");
+  const headerOnly = path.join(dir, "default");
+  const none = path.join(dir, "profiles", "rdlc-whatsapp");
+  for (const d of [titled, headerOnly, none]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(
+    path.join(titled, "profile.yaml"),
+    "description: Head of Growth — research\n  more text\nui_meta:\n  hermes-bots:\n    shape: blobatar\n    title: 'Head of Growth'\n    sectionName: Organization\n_ui_meta_revisions:\n  hermes-bots: 2\n",
+  );
+  fs.writeFileSync(path.join(headerOnly, "profile.yaml"), "description: none\n");
+  fs.writeFileSync(
+    path.join(headerOnly, "config.yaml"),
+    "mcp_servers:\n  wavebrain:\n    url: https://getwavebrain.com/api/mcp\n    headers:\n      Authorization: Bearer x\n      X-WaveBrain-Bot: CEO\n",
+  );
+  const py = `
+import sys, json, os; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, "plugins"))})
+import hermes as h
+out = []
+for home in json.loads(sys.argv[1]):
+    os.environ["HERMES_HOME"] = home
+    out.append([h.bot_name(), h.instruction()])
+os.environ["WAVEBRAIN_BOT"] = "  Override   Bot "
+out.append([h.bot_name(), None])
+print(json.dumps(out))`;
+  const out = JSON.parse(execFileSync("python3", ["-c", py, JSON.stringify([titled, headerOnly, none])], { encoding: "utf8" }));
+  assert.equal(out[0][0], "Head of Growth");
+  assert.match(out[0][1], /agent="hermes-head-of-growth" and bot="Head of Growth"/);
+  assert.equal(out[1][0], "CEO");
+  assert.equal(out[2][0], null);
+  assert.doesNotMatch(out[2][1], /bot=/);
+  assert.equal(out[3][0], "Override Bot");
 });

@@ -9,6 +9,7 @@
 //
 // Capture is local-first: a failed upload stays in ~/.wavebrain/queue and is retried next turn.
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -118,11 +119,66 @@ const firstLine = (s, n = 140) => {
   return one.length > n ? one.slice(0, n - 1) + "…" : one;
 };
 
+// ---------- git titles ----------
+
+/** The directory a command segment ran in: the last `cd <dir>` before it, else cwd. Null if unknown. */
+export function commandDir(before, cwd, env = process.env) {
+  let dir = cwd || null;
+  for (const m of String(before).matchAll(/(?:^|[;&|(]\s*)cd\s+("[^"]+"|'[^']+'|[^\s;&|)]+)/g)) {
+    let p = m[1].replace(/^["']|["']$/g, "");
+    if (p === "~" || p.startsWith("~/")) p = path.join(env.HOME || os.homedir(), p.slice(1));
+    if (!path.isAbsolute(p) && !dir) return null;
+    dir = path.resolve(dir || "/", p);
+  }
+  return dir;
+}
+
+/** { repo, branch, subject } of the git repo at dir (repo = the main checkout's folder name, also from a worktree), or null. */
+export function readGit(dir) {
+  if (!dir) return null;
+  try {
+    const run = (...a) =>
+      execFileSync("git", ["-C", dir, ...a], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const common = path.resolve(dir, run("rev-parse", "--git-common-dir"));
+    const repo = path.basename(common) === ".git" ? path.basename(path.dirname(common)) : path.basename(common).replace(/\.git$/, "");
+    const branch = run("rev-parse", "--abbrev-ref", "HEAD");
+    const subject = run("log", "-1", "--format=%s");
+    return repo && subject ? { repo, branch: branch === "HEAD" ? "" : branch, subject } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The branch a `git push` names (`git push origin main`, `HEAD:release`), or null to use the checked-out one. */
+export function pushedBranch(segment) {
+  const words = String(segment).trim().split(/\s+/);
+  const args = words.slice(words.indexOf("push") + 1).filter((w) => !w.startsWith("-"));
+  let ref = args[1];
+  if (!ref) return null;
+  ref = ref.replace(/^\+/, "");
+  if (ref.includes(":")) ref = ref.split(":").pop();
+  ref = ref.replace(/^refs\/heads\//, "");
+  return ref && ref !== "HEAD" ? ref : null;
+}
+
+/** Fills a git_title template, or null so the caller falls back to the plain title. */
+export function gitTitle(template, rule, segment, git) {
+  if (!template || !git) return null;
+  const branch = (rule === "git-push" && pushedBranch(segment)) || git.branch;
+  let t = template;
+  if (!branch) t = t.replace("/{branch}", "").replace("{branch}", "");
+  return t
+    .replace("{repo}", git.repo)
+    .replace("{branch}", branch)
+    .replace("{subject}", firstLine(redact(git.subject), 120));
+}
+
 /**
  * Returns { type, title, details, rule } for a tool call worth recording, or null.
  * ev: { toolName, toolInput, cwd, failed }
+ * opts.readGit: reads repo info for git_title rules (injectable for tests).
  */
-export function classify(rules, ev) {
+export function classify(rules, ev, { readGit: gitReader = readGit } = {}) {
   const name = String(ev.toolName || "");
   const input = ev.toolInput || {};
   const where = ev.cwd ? ` in ${path.basename(ev.cwd)}` : "";
@@ -143,9 +199,13 @@ export function classify(rules, ev) {
       const ends = ["&&", ";", "|"].map((d) => cmd.indexOf(d, m.index + m[0].length)).filter((i) => i >= 0);
       const segment = cmd.slice(start, ends.length ? Math.min(...ends) : cmd.length).trim();
       const safe = redact(segment);
+      // Readable git titles ("Pushed to app/main: Fix login") when the repo can be read; the
+      // command itself otherwise. A failed commit would show the previous commit, so skip those.
+      const pretty =
+        r.git_title && !ev.failed ? gitTitle(r.git_title, r.id, segment, gitReader(commandDir(cmd.slice(0, start), ev.cwd))) : null;
       return {
         type: r.type,
-        title: firstLine(r.title.replace("{cmd}", firstLine(safe, 120)), 200),
+        title: firstLine(pretty ?? r.title.replace("{cmd}", firstLine(safe, 120)), 200),
         details: `Ran \`${firstLine(redact(cmd), 1500)}\`${where}.${outcome} (Recorded automatically by the WaveBrain hook.)`,
         rule: r.id,
       };

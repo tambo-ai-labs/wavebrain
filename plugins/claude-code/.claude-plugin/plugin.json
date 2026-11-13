@@ -1,6 +1,6 @@
 {
   "name": "wavebrain",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Logs your agent's real-world actions to WaveBrain, the audit log of what your AI agents did.",
   "author": {
     "name": "Tambo Labs",

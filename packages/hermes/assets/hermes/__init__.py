@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 import urllib.error
@@ -26,14 +27,92 @@ STALE = 10 * 60
 MAX_PER_FLUSH = 25
 SHELL_TOOLS = {"terminal", "bash", "shell", "execute_command", "run_terminal_cmd"}
 
-INSTRUCTION = (
-    "WaveBrain is the user's audit log of what agents did. After every action that changes "
-    "something outside this conversation (deploys, git push, merges, releases, published posts, "
-    "emails or messages sent, payments, database or live config changes), call the WaveBrain "
-    "log_action tool once with a short past-tense title and details of what changed and the result. "
-    "Don't log reads, searches or plans. Never include secrets or codes. A hook records high-stakes "
-    "commands automatically as a safety net; your own log_action entry replaces it."
-)
+def agent_name() -> str:
+    """'hermes' for the default profile, 'hermes-<profile>' for a named one (HERMES_PROFILE or the
+    profile folder in HERMES_HOME), so each bot shows up separately in WaveBrain."""
+    profile = os.environ.get("HERMES_PROFILE") or Path(os.environ.get("HERMES_HOME", "")).name or "hermes"
+    profile = re.sub(r"[^a-z0-9._-]+", "-", profile.strip().lower()).strip("-")
+    agent = "hermes" if profile in ("", ".hermes", "hermes", "default") else f"hermes-{profile}"
+    return agent[:64]
+
+
+def profile_home() -> Path:
+    """Folder of the running Hermes profile: HERMES_HOME, else ~/.hermes/profiles/<HERMES_PROFILE>,
+    else the profile this plugin is installed in, else ~/.hermes."""
+    if os.environ.get("HERMES_HOME"):
+        return Path(os.environ["HERMES_HOME"]).expanduser()
+    base = Path.home() / ".hermes"
+    profile = os.environ.get("HERMES_PROFILE")
+    if profile and profile not in ("default", "hermes"):
+        return base / "profiles" / profile
+    owner = HERE.parent.parent
+    return owner if (owner / "config.yaml").exists() else base
+
+
+def _yaml_scalar(v: str) -> str:
+    v = re.sub(r"\s+#.*$", "", v.strip())
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        v = v[1:-1]
+    return v.strip()
+
+
+def _profile_title(home: Path):
+    """ui_meta → hermes-bots → title in profile.yaml (the bot's name in the Hermes app)."""
+    try:
+        text = (home / "profile.yaml").read_text()
+    except Exception:
+        return None
+    try:
+        import yaml  # type: ignore
+
+        meta = ((yaml.safe_load(text) or {}).get("ui_meta") or {}).get("hermes-bots") or {}
+        return str(meta["title"]).strip() if meta.get("title") else None
+    except ImportError:
+        pass
+    except Exception:
+        return None
+    # No PyYAML: find the indented hermes-bots block under ui_meta and read its title.
+    m = re.search(r"^ui_meta:[ \t]*\n((?:[ \t]+.*\n?|[ \t]*\n)*)", text, re.M)
+    b = m and re.search(r"^([ \t]+)hermes-bots:[ \t]*\n((?:\1[ \t]+.*\n?|[ \t]*\n)*)", m.group(1), re.M)
+    t = b and re.search(r"^[ \t]+title:[ \t]*(.+)$", b.group(2), re.M)
+    return (_yaml_scalar(t.group(1)) or None) if t else None
+
+
+def _header_bot(home: Path):
+    """X-WaveBrain-Bot from the MCP server headers in the profile's config.yaml."""
+    try:
+        text = (home / "config.yaml").read_text()
+    except Exception:
+        return None
+    m = re.search(r"^[ \t]*X-WaveBrain-Bot:[ \t]*(.+)$", text, re.M | re.I)
+    return (_yaml_scalar(m.group(1)) or None) if m else None
+
+
+def bot_name():
+    """The bot's display name, e.g. "Head of Growth": WAVEBRAIN_BOT, else the profile's title in
+    the Hermes app, else the profile's X-WaveBrain-Bot header. None when there's none."""
+    home = profile_home()
+    name = os.environ.get("WAVEBRAIN_BOT") or _profile_title(home) or _header_bot(home)
+    name = re.sub(r"\s+", " ", str(name or "")).strip()
+    return name[:80] or None
+
+
+def instruction(agent: str | None = None, bot: str | None = None) -> str:
+    agent = agent or agent_name()
+    bot = bot if bot is not None else bot_name()
+    ids = f'agent="{agent}"' + (f' and bot="{bot}"' if bot else "")
+    return (
+        "WaveBrain is the user's audit log of what agents did. After every action that changes "
+        "something outside this conversation (deploys, git push, merges, releases, published posts, "
+        "emails or messages sent, payments, database or live config changes), call the WaveBrain "
+        "log_action tool once with a short past-tense title and details of what changed and the result. "
+        f"Always pass {ids} (and the same agent to start_session), so the user can tell this bot apart from others. "
+        "Don't log reads, searches or plans. Never include secrets or codes. A hook records high-stakes "
+        "commands automatically as a safety net; your own log_action entry replaces it."
+    )
+
+
+INSTRUCTION = instruction()
 
 
 def _home() -> Path:
@@ -98,7 +177,59 @@ def _mcp_parts(name: str):
     return (m.group(1), m.group(2)) if m else None
 
 
-def classify(tool_name: str, args: dict, cwd: str | None = None, failed: bool = False):
+def command_dir(before: str, cwd: str | None):
+    """The directory a command segment ran in: the last `cd <dir>` before it, else cwd. None if unknown."""
+    d = cwd or None
+    for m in re.finditer(r"""(?:^|[;&|(]\s*)cd\s+("[^"]+"|'[^']+'|[^\s;&|)]+)""", before or ""):
+        p = m.group(1).strip("\"'")
+        if p == "~" or p.startswith("~/"):
+            p = os.path.join(os.environ.get("HOME") or str(Path.home()), p[2:] if p.startswith("~/") else "")
+        if not os.path.isabs(p) and not d:
+            return None
+        d = os.path.normpath(os.path.join(d or "/", p))
+    return d
+
+
+def read_git(d):
+    """{repo, branch, subject} of the git repo at d (repo = the main checkout's folder name), or None."""
+    if not d:
+        return None
+    try:
+        def run(*a):
+            return subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, timeout=2, check=True).stdout.strip()
+
+        common = os.path.normpath(os.path.join(d, run("rev-parse", "--git-common-dir")))
+        base = os.path.basename(common)
+        repo = os.path.basename(os.path.dirname(common)) if base == ".git" else re.sub(r"\.git$", "", base)
+        branch = run("rev-parse", "--abbrev-ref", "HEAD")
+        subject = run("log", "-1", "--format=%s")
+        return {"repo": repo, "branch": "" if branch == "HEAD" else branch, "subject": subject} if repo and subject else None
+    except Exception:
+        return None
+
+
+def pushed_branch(segment: str):
+    words = str(segment).split()
+    i = words.index("push") + 1 if "push" in words else len(words)
+    args = [w for w in words[i:] if not w.startswith("-")]
+    if len(args) < 2:
+        return None
+    ref = args[1].lstrip("+").split(":")[-1]
+    ref = re.sub(r"^refs/heads/", "", ref)
+    return ref if ref and ref != "HEAD" else None
+
+
+def git_title(template, rule_id, segment, git):
+    if not template or not git:
+        return None
+    branch = (rule_id == "git-push" and pushed_branch(segment)) or git["branch"]
+    t = template
+    if not branch:
+        t = t.replace("/{branch}", "").replace("{branch}", "")
+    return t.replace("{repo}", git["repo"]).replace("{branch}", branch or "").replace("{subject}", _short(redact(git["subject"]), 120))
+
+
+def classify(tool_name: str, args: dict, cwd: str | None = None, failed: bool = False, git_reader=read_git):
     args = args or {}
     where = f" in {os.path.basename(cwd)}" if cwd else ""
     outcome = " It failed." if failed else ""
@@ -117,9 +248,13 @@ def classify(tool_name: str, args: dict, cwd: str | None = None, failed: bool = 
             start = max([0] + [cmd.rfind(d, 0, frm) + len(d) for d in ("&&", ";", "|") if cmd.rfind(d, 0, frm) >= 0])
             ends = [i for i in (cmd.find(d, m.end()) for d in ("&&", ";", "|")) if i >= 0]
             seg = cmd[start : min(ends) if ends else len(cmd)].strip()
+            # Readable git titles when the repo can be read; the command itself otherwise.
+            pretty = None
+            if r.get("git_title") and not failed:
+                pretty = git_title(r["git_title"], r["id"], seg, git_reader(command_dir(cmd[:start], cwd)))
             return {
                 "type": r["type"],
-                "title": _short(r["title"].replace("{cmd}", _short(redact(seg), 120)), 200),
+                "title": _short(pretty or r["title"].replace("{cmd}", _short(redact(seg), 120)), 200),
                 "details": f"Ran `{_short(redact(cmd), 1500)}`{where}.{outcome} (Recorded automatically by the WaveBrain hook.)",
                 "rule": r["id"],
             }
@@ -247,17 +382,18 @@ def on_post_tool_call(tool_name=None, args=None, result=None, session_id=None, s
         action = classify(name, args, args.get("workdir") or os.getcwd(), failed)
         if not action:
             return
-        profile = os.environ.get("HERMES_PROFILE") or Path(os.environ.get("HERMES_HOME", "")).name or "hermes"
-        agent = "hermes" if profile in ("", ".hermes", "hermes") else f"hermes-{profile}"
         cwd = args.get("workdir")
         payload = {
-            "agent": agent[:64],
+            "agent": agent_name(),
             "type": action["type"],
             "title": action["title"],
             "details": action["details"],
             "status": "failure" if failed else "success",
             "metadata": {"source": "wavebrain-hook", "host": "hermes", "rule": action["rule"]},
         }
+        bot = bot_name()
+        if bot:
+            payload["bot"] = bot
         if cwd:
             payload["project"] = os.path.basename(str(cwd))[:200]
         path = _queue(session)
@@ -279,4 +415,4 @@ def register(ctx):
     ctx.register_hook("post_tool_call", on_post_tool_call)
     ctx.register_hook("on_session_end", on_session_end)
     if hasattr(ctx, "register_system_prompt_section"):
-        ctx.register_system_prompt_section("wavebrain.logging", INSTRUCTION, position="after_memory", max_chars=1500)
+        ctx.register_system_prompt_section("wavebrain.logging", instruction(), position="after_memory", max_chars=1500)

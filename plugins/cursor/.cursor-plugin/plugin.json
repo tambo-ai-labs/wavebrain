@@ -1,7 +1,7 @@
 {
   "name": "wavebrain",
   "displayName": "WaveBrain",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Logs your agent's deploys, pushes, releases, emails, payments and other real-world actions to WaveBrain, the audit log of what your AI agents did. MCP tools plus hooks that catch what the model forgets to log.",
   "author": {
     "name": "Tambo Labs",

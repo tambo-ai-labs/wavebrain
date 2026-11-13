@@ -1,5 +1,5 @@
 name: wavebrain
-version: 0.4.0
+version: 0.4.2
 description: "WaveBrain: records your agent's deploys, pushes, releases, emails, payments and other real-world actions to its audit log, even when the model forgets to call log_action."
 author: Tambo Labs
 homepage: https://getwavebrain.com

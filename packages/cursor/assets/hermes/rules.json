@@ -1,9 +1,9 @@
 {
-  "$comment": "Shell commands that are recorded automatically. Each rule: regex (case-insensitive, matched against the whole command), WaveBrain action type, and a title template ({cmd} = first matching command segment). Shared by every plugin; edit here, then run `node scripts/sync.mjs`.",
+  "$comment": "Shell commands that are recorded automatically. Each rule: regex (case-insensitive, matched against the whole command), WaveBrain action type, and a title template ({cmd} = first matching command segment). Optional git_title is used instead when the repo can be read after the command ({repo} = repo folder, {branch}, {subject} = latest commit subject); title stays the fallback. Shared by every plugin; edit here, then run `node scripts/sync.mjs`.",
   "version": 1,
   "shell": [
-    { "id": "git-push", "pattern": "(^|[\\s;&|(])git\\s+push\\b", "type": "push", "title": "Pushed to git: {cmd}" },
-    { "id": "git-commit", "pattern": "(^|[\\s;&|(])git\\s+commit\\b", "type": "commit", "title": "Made a git commit: {cmd}" },
+    { "id": "git-push", "pattern": "(^|[\\s;&|(])git\\s+push\\b", "type": "push", "title": "Pushed to git: {cmd}", "git_title": "Pushed to {repo}/{branch}: {subject}" },
+    { "id": "git-commit", "pattern": "(^|[\\s;&|(])git\\s+commit\\b", "type": "commit", "title": "Made a git commit: {cmd}", "git_title": "Committed to {repo}: {subject}" },
     { "id": "gh-pr-create", "pattern": "(^|[\\s;&|(])gh\\s+pr\\s+create\\b", "type": "pull_request", "title": "Opened a pull request: {cmd}" },
     { "id": "gh-pr-merge", "pattern": "(^|[\\s;&|(])gh\\s+pr\\s+merge\\b", "type": "merge", "title": "Merged a pull request: {cmd}" },
     { "id": "gh-release", "pattern": "(^|[\\s;&|(])gh\\s+release\\s+create\\b", "type": "release", "title": "Created a GitHub release: {cmd}" },
