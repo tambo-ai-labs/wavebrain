@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { classify, commandDir, flush, fromHookInput, gitTitle, loadRules, observe, pushedBranch, queueFile, readGit, redact } from "../shared/core.mjs";
+import { classify, commandDir, flush, fromHookInput, loadRules, observe, pushedBranch, queueFile, readGit, redact } from "../shared/core.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rules = loadRules();
@@ -30,8 +30,8 @@ test("records high-stakes shell commands and skips the rest", () => {
 });
 
 test("titles name only the matching part of a compound command", () => {
-  const a = sh("cd ~/app && pnpm build && vercel --prod --yes; echo done");
-  assert.equal(a.title, "Deployed with Vercel: vercel --prod --yes");
+  const a = classify(rules, { toolName: "Bash", toolInput: { command: "cd ~/app && pnpm build && vercel --prod --yes; echo done" } }, { readFile: () => null });
+  assert.equal(a.title, `Deployed app to production on Vercel`);
   assert.match(a.details, /cd ~\/app && pnpm build && vercel --prod --yes; echo done/);
 });
 
@@ -147,20 +147,13 @@ test("Cursor's MCP:<tool> names: writes recorded, WaveBrain's own tools skipped,
   assert.equal(isAgentLog("MCP:create_refund", {}), false);
 });
 
-test("git push/commit titles name the repo, branch and latest commit subject", () => {
-  const git = () => ({ repo: "getwavebrain", branch: "main", subject: "Fix the login redirect" });
-  const t = (command, extra = {}) => classify(rules, { toolName: "Bash", toolInput: { command }, cwd: "/w/app", ...extra }, { readGit: git }).title;
-  assert.equal(t("git push origin main"), "Pushed to getwavebrain/main: Fix the login redirect");
-  assert.equal(t("git push -u origin feat/x"), "Pushed to getwavebrain/feat/x: Fix the login redirect");
-  assert.equal(t("git push origin HEAD:release"), "Pushed to getwavebrain/release: Fix the login redirect");
-  assert.equal(t('git commit -m "Fix"'), "Committed to getwavebrain: Fix the login redirect");
-  // Fallbacks: no repo info, or a failed command (a failed commit would show the previous one).
-  assert.equal(classify(rules, { toolName: "Bash", toolInput: { command: "git push" }, cwd: "/w" }, { readGit: () => null }).title, "Pushed to git: git push");
-  assert.equal(t('git commit -m "Fix"', { failed: true }), 'Made a git commit: git commit -m "Fix"');
-  // Detached HEAD: no branch.
-  assert.equal(gitTitle("Pushed to {repo}/{branch}: {subject}", "git-push", "git push", { repo: "r", branch: "", subject: "s" }), "Pushed to r: s");
-  // Secrets in a commit subject are redacted.
-  assert.doesNotMatch(gitTitle("Committed to {repo}: {subject}", "git-commit", "git commit", { repo: "r", branch: "m", subject: "use sk_live_abcdefghijkl1234" }), /sk_live/);
+test("git titles fall back to the rule title when git can't be read", () => {
+  const none = { git: () => { throw new Error("no repo"); } };
+  assert.equal(classify(rules, { toolName: "Bash", toolInput: { command: "git push" }, cwd: "/w" }, none).title, "Pushed to git: git push");
+  // A failed commit never shows the previous commit's subject.
+  const failed = classify(rules, { toolName: "Bash", toolInput: { command: 'git commit -m "Fix"' }, cwd: "/w/app", failed: true, output: "nothing to commit, working tree clean" }, { git: (a) => ({ "rev-parse --git-common-dir": ".git", "rev-parse --abbrev-ref HEAD": "main" })[a.join(" ")] ?? "Old subject" });
+  assert.equal(failed.title, "Commit to app/main failed: nothing to commit");
+  assert.equal(failed.status, "failure");
 });
 
 test("the git directory follows cd, and readGit reads a real repo (and worktree name) or returns null", () => {
@@ -184,23 +177,17 @@ test("the git directory follows cd, and readGit reads a real repo (and worktree 
   assert.equal(readGit(path.join(dir, "missing")), null);
 });
 
-test("the Hermes plugin makes the same git titles and tells the model its agent name", () => {
+test("the Hermes plugin tells the model its agent name", () => {
   const py = `
 import sys, json, os; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, "plugins"))})
 import hermes as h
-git = lambda d: {"repo": "getwavebrain", "branch": "main", "subject": "Fix the login redirect"}
-out = [h.classify("terminal", {"command": c}, "/w/app", False, git)["title"] for c in json.loads(sys.argv[1])]
-out.append(h.classify("terminal", {"command": "git push"}, "/w", False, lambda d: None)["title"])
 names = []
 for home, prof in [("/u/.hermes", ""), ("/u/.hermes/profiles/head-of-growth", ""), ("/u/.hermes", "SEO Manager")]:
     os.environ["HERMES_HOME"] = home
     os.environ["HERMES_PROFILE"] = prof
     names.append(h.agent_name())
-print(json.dumps({"titles": out, "names": names, "instr": h.instruction("hermes-seo-manager")}))`;
-  const cmds = ["git push origin main", "git push -u origin feat/x", 'git commit -m "Fix"'];
-  const out = JSON.parse(execFileSync("python3", ["-c", py, JSON.stringify(cmds)], { encoding: "utf8" }));
-  const node = cmds.map((command) => classify(rules, { toolName: "Bash", toolInput: { command }, cwd: "/w/app" }, { readGit: () => ({ repo: "getwavebrain", branch: "main", subject: "Fix the login redirect" }) }).title);
-  assert.deepEqual(out.titles, [...node, "Pushed to git: git push"]);
+print(json.dumps({"names": names, "instr": h.instruction("hermes-seo-manager")}))`;
+  const out = JSON.parse(execFileSync("python3", ["-c", py], { encoding: "utf8" }));
   assert.deepEqual(out.names, ["hermes", "hermes-head-of-growth", "hermes-seo-manager"]);
   assert.match(out.instr, /agent="hermes-seo-manager"/);
 });

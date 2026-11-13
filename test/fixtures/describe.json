@@ -1,0 +1,1046 @@
+{
+  "$comment": "Shared fixtures for the readable-entry describers. Run by test/describe.test.mjs (shared/core.mjs) and test/test_hermes.py (plugins/hermes). `git` maps the git arguments (joined by spaces) to stdout; a missing key fails like a real git error. `files` are the only files that exist; a folder lists the names under it. Regenerate expectations with: node test/describe.test.mjs --update",
+  "now": 1763075010000,
+  "home": "/h",
+  "cases": [
+    {
+      "name": "git push: 3 commits, range from the push output",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push origin main"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "To github.com:acme/getwavebrain.git\n   abc1234..def5678  main -> main\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main",
+        "log --format=%s -n 11 abc1234..def5678": "Activity log: tell apart bots on the same harness\nTheme: keep the light palette on app pages\nSearch Console verification file",
+        "rev-list --count abc1234..def5678": "3",
+        "diff --shortstat abc1234 def5678": " 18 files changed, 1731 insertions(+), 58 deletions(-)",
+        "merge-base --is-ancestor abc1234 def5678": ""
+      },
+      "expect": {
+        "title": "Pushed 3 commits to getwavebrain/main: Activity log: tell apart bots on the same harness",
+        "status": "success",
+        "details": "Commits:\n- Activity log: tell apart bots on the same harness\n- Theme: keep the light palette on app pages\n- Search Console verification file\n+1731/−58 lines in 18 files\nRange: abc1234..def5678\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git push origin main`"
+      }
+    },
+    {
+      "name": "git push -q (no output): range from the remote-tracking reflog",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "cd ~/Workspace/getwavebrain && git push -q origin main"
+        },
+        "cwd": "/w"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main",
+        "log -g -n 2 --date=unix --format=%H %gd %gs refs/remotes/origin/main": "def5678aaaa refs/remotes/origin/main@{1763075001} update by push\nabc1234bbbb refs/remotes/origin/main@{1763000000} update by push",
+        "log --format=%s -n 11 abc1234bbbb..def5678aaaa": "Fix the login redirect",
+        "rev-list --count abc1234bbbb..def5678aaaa": "1",
+        "diff --shortstat abc1234bbbb def5678aaaa": " 2 files changed, 12 insertions(+), 3 deletions(-)",
+        "merge-base --is-ancestor abc1234bbbb def5678aaaa": ""
+      },
+      "expect": {
+        "title": "Pushed to getwavebrain/main: Fix the login redirect",
+        "status": "success",
+        "details": "Commits:\n- Fix the login redirect\n+12/−3 lines in 2 files\nRange: abc1234..def5678\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `cd ~/Workspace/getwavebrain && git push -q origin main`"
+      }
+    },
+    {
+      "name": "git push: stale reflog falls back to the latest commit subject",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push -q origin main"
+        },
+        "cwd": "/w/getwavebrain"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main",
+        "log -g -n 2 --date=unix --format=%H %gd %gs refs/remotes/origin/main": "def5678aaaa refs/remotes/origin/main@{1700000000} update by push",
+        "log -1 --format=%s HEAD": "Fix the login redirect"
+      },
+      "expect": {
+        "title": "Pushed to getwavebrain/main: Fix the login redirect",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git push -q origin main`"
+      }
+    },
+    {
+      "name": "git push: can't read git at all, keeps the old title",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push -q origin main"
+        },
+        "cwd": "/w/getwavebrain"
+      },
+      "git": {},
+      "expect": {
+        "title": "Pushed to git: git push -q origin main",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git push -q origin main`"
+      }
+    },
+    {
+      "name": "git push: force push",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push --force-with-lease"
+        },
+        "cwd": "/w/app",
+        "output": "To github.com:acme/app.git\n + abc1234...def5678 feat/x -> feat/x (forced update)\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "feat/x",
+        "rev-parse --abbrev-ref --symbolic-full-name @{u}": "origin/feat/x",
+        "log --format=%s -n 11 abc1234..def5678": "Rework the checkout form\nRename helpers",
+        "rev-list --count abc1234..def5678": "2",
+        "diff --shortstat abc1234 def5678": " 4 files changed, 40 insertions(+), 90 deletions(-)"
+      },
+      "expect": {
+        "title": "Force-pushed 2 commits to app/feat/x: Rework the checkout form",
+        "status": "success",
+        "details": "Commits:\n- Rework the checkout form\n- Rename helpers\n+40/−90 lines in 4 files\nForce push: the remote branch was rewritten (was abc1234, now def5678).\nRecorded automatically by the WaveBrain hook in app.\nCommand: `git push --force-with-lease`"
+      }
+    },
+    {
+      "name": "git push: new branch",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push -u origin feat/bots"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "To github.com:acme/getwavebrain.git\n * [new branch]      feat/bots -> feat/bots\nbranch 'feat/bots' set up to track 'origin/feat/bots'.\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "feat/bots",
+        "log --format=%s -n 11 feat/bots --not --exclude=refs/remotes/origin/feat/bots --remotes=origin": "Bot badges\nBot names in Slack alerts",
+        "rev-list --count feat/bots --not --exclude=refs/remotes/origin/feat/bots --remotes=origin": "2"
+      },
+      "expect": {
+        "title": "Pushed new branch getwavebrain/feat/bots (2 commits): Bot badges",
+        "status": "success",
+        "details": "Commits:\n- Bot badges\n- Bot names in Slack alerts\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git push -u origin feat/bots`"
+      }
+    },
+    {
+      "name": "git push: rejected",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push origin main"
+        },
+        "cwd": "/w/getwavebrain",
+        "failed": true,
+        "exitCode": 1,
+        "output": "To github.com:acme/getwavebrain.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'github.com:acme/getwavebrain.git'\nhint: Updates were rejected because the remote contains work that you do not have locally.\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main"
+      },
+      "expect": {
+        "title": "Push to getwavebrain/main failed: rejected (fetch first)",
+        "status": "failure",
+        "details": "Failed: rejected (fetch first)\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git push origin main`"
+      }
+    },
+    {
+      "name": "git push: already up to date",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git push"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "Everything up-to-date\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main",
+        "rev-parse --abbrev-ref --symbolic-full-name @{u}": "origin/main"
+      },
+      "expect": {
+        "title": "Pushed to getwavebrain/main: already up to date",
+        "status": "success",
+        "details": "Nothing new to push; the remote already had these commits.\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git push`"
+      }
+    },
+    {
+      "name": "git commit",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git add -A && git commit -m \"Fix the login redirect\""
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "[main 1a2b3c4] Fix the login redirect\n 2 files changed, 10 insertions(+), 3 deletions(-)\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main",
+        "log -1 --format=%H%x09%s 1a2b3c4": "1a2b3c4d5e6f\tFix the login redirect",
+        "show --shortstat --format= 1a2b3c4d5e6f": " 2 files changed, 10 insertions(+), 3 deletions(-)",
+        "show --name-only --format= 1a2b3c4d5e6f": "src/proxy.ts\ntests/auth.test.ts"
+      },
+      "expect": {
+        "title": "Committed to getwavebrain/main: Fix the login redirect",
+        "status": "success",
+        "details": "+10/−3 lines in 2 files\nFiles: src/proxy.ts, tests/auth.test.ts\nCommit: 1a2b3c4\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git add -A && git commit -m \"Fix the login redirect\"`"
+      }
+    },
+    {
+      "name": "git commit: nothing to commit",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git commit -am wip"
+        },
+        "cwd": "/w/getwavebrain",
+        "failed": true,
+        "exitCode": 1,
+        "output": "On branch main\nnothing to commit, working tree clean\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "main"
+      },
+      "expect": {
+        "title": "Commit to getwavebrain/main failed: nothing to commit",
+        "status": "failure",
+        "details": "Failed: nothing to commit\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `git commit -am wip`"
+      }
+    },
+    {
+      "name": "git commit: no git, title from the commit output",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git commit -m 'Add README'"
+        },
+        "cwd": "/w/notes",
+        "output": "[trunk (root-commit) 9f8e7d6] Add README\n 1 file changed, 3 insertions(+)\n"
+      },
+      "git": {},
+      "expect": {
+        "title": "Committed to notes/trunk: Add README",
+        "status": "success",
+        "details": "Commit: 9f8e7d6\nRecorded automatically by the WaveBrain hook in notes.\nCommand: `git commit -m 'Add README'`"
+      }
+    },
+    {
+      "name": "gh pr create",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "gh pr create --title \"Bot badges in the activity log\" --body \"...\" --base main"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "Creating pull request for feat/bots into main in acme/getwavebrain\n\nhttps://github.com/acme/getwavebrain/pull/42\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "feat/bots"
+      },
+      "expect": {
+        "title": "Opened PR #42 in getwavebrain: Bot badges in the activity log",
+        "status": "success",
+        "details": "URL: https://github.com/acme/getwavebrain/pull/42\nBranch: feat/bots → main\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `gh pr create --title \"Bot badges in the activity log\" --body \"...\" --base main`"
+      }
+    },
+    {
+      "name": "gh pr merge",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "gh pr merge 42 --squash --delete-branch"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "✓ Squashed and merged pull request acme/getwavebrain#42 (Bot badges in the activity log)\n✓ Deleted local branch feat/bots and switched to branch main\n"
+      },
+      "git": {
+        "rev-parse --git-common-dir": ".git",
+        "rev-parse --abbrev-ref HEAD": "feat/bots"
+      },
+      "expect": {
+        "title": "Merged PR #42 in getwavebrain: Bot badges in the activity log",
+        "status": "success",
+        "details": "Method: squash\nDeleted the branch after merging.\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `gh pr merge 42 --squash --delete-branch`"
+      }
+    },
+    {
+      "name": "gh release create",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "gh release create v0.5.0 --title \"Readable entries\" --notes-file NOTES.md"
+        },
+        "cwd": "/w/wavebrain",
+        "output": "https://github.com/acme/wavebrain/releases/tag/v0.5.0\n"
+      },
+      "git": {},
+      "expect": {
+        "title": "Created GitHub release v0.5.0 in wavebrain: Readable entries",
+        "status": "success",
+        "details": "URL: https://github.com/acme/wavebrain/releases/tag/v0.5.0\nRecorded automatically by the WaveBrain hook in wavebrain.\nCommand: `gh release create v0.5.0 --title \"Readable entries\" --notes-file NOTES.md`"
+      }
+    },
+    {
+      "name": "vercel --prod",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "vercel --prod --yes"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "Vercel CLI 64.0.1\n🔍  Inspect: https://vercel.com/acme/getwavebrain/AbCdEf [2s]\n✅  Production: https://getwavebrain-abc123-acme.vercel.app [41s]\n🔗  Aliased: https://getwavebrain.com [3s]\n"
+      },
+      "files": {
+        "/w/getwavebrain/.vercel/project.json": "{\"projectId\":\"prj_1\",\"orgId\":\"team_1\",\"projectName\":\"getwavebrain\"}"
+      },
+      "expect": {
+        "title": "Deployed getwavebrain to production on Vercel (getwavebrain.com)",
+        "status": "success",
+        "details": "Deployment: https://getwavebrain-abc123-acme.vercel.app\nLive at: https://getwavebrain.com\nInspect: https://vercel.com/acme/getwavebrain/AbCdEf\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `vercel --prod --yes`"
+      }
+    },
+    {
+      "name": "vercel deploy: preview, project from the folder",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "npx vercel deploy --prebuilt"
+        },
+        "cwd": "/w/site",
+        "output": "Preview: https://site-xyz-acme.vercel.app [3s]\n"
+      },
+      "expect": {
+        "title": "Deployed site to preview on Vercel (site-xyz-acme.vercel.app)",
+        "status": "success",
+        "details": "Deployment: https://site-xyz-acme.vercel.app\nDeployed a prebuilt output.\nRecorded automatically by the WaveBrain hook in site.\nCommand: `npx vercel deploy --prebuilt`"
+      }
+    },
+    {
+      "name": "vercel deploy: build failed",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "vercel --prod"
+        },
+        "cwd": "/w/getwavebrain",
+        "failed": true,
+        "exitCode": 1,
+        "output": "Building...\nType error: Property 'bot' does not exist on type 'Action'.\nError: Command \"next build\" exited with 1\n"
+      },
+      "files": {
+        "/w/getwavebrain/.vercel/project.json": "{\"projectName\":\"getwavebrain\"}"
+      },
+      "expect": {
+        "title": "Vercel production deploy of getwavebrain failed: Error: Command \"next build\" exited with 1",
+        "status": "failure",
+        "details": "Failed: Error: Command \"next build\" exited with 1\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `vercel --prod`"
+      }
+    },
+    {
+      "name": "vercel promote",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "vercel promote https://getwavebrain-abc123-acme.vercel.app --yes"
+        },
+        "cwd": "/w/getwavebrain"
+      },
+      "files": {
+        "/w/getwavebrain/.vercel/project.json": "{\"projectName\":\"getwavebrain\"}"
+      },
+      "expect": {
+        "title": "Promoted getwavebrain-abc123-acme.vercel.app to production for getwavebrain on Vercel",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `vercel promote https://getwavebrain-abc123-acme.vercel.app --yes`"
+      }
+    },
+    {
+      "name": "vercel env add (value piped in, never recorded)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "printf 'hunter2-not-a-real-value' | vercel env add RESEND_API_KEY production"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "Added Environment Variable RESEND_API_KEY to Project getwavebrain [120ms]\n"
+      },
+      "files": {
+        "/w/getwavebrain/.vercel/project.json": "{\"projectName\":\"getwavebrain\"}"
+      },
+      "absent": [
+        "hunter2"
+      ],
+      "expect": {
+        "title": "Added Vercel env var RESEND_API_KEY to production (getwavebrain)",
+        "status": "success",
+        "details": "The value is never recorded.\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `printf [redacted] | vercel env add RESEND_API_KEY production`"
+      }
+    },
+    {
+      "name": "vercel env rm",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "vercel env rm OLD_FLAG preview -y"
+        },
+        "cwd": "/w/getwavebrain"
+      },
+      "expect": {
+        "title": "Removed Vercel env var OLD_FLAG from preview (getwavebrain)",
+        "status": "success",
+        "details": "The value is never recorded.\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `vercel env rm OLD_FLAG preview -y`"
+      }
+    },
+    {
+      "name": "railway up",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "railway up --service api --detach"
+        },
+        "cwd": "/w/shop/backend",
+        "output": "Indexing...\nUploading...\n  Build Logs: https://railway.com/project/p1/service/s1?id=d1\n"
+      },
+      "files": {
+        "/h/.railway/config.json": "{\"projects\":{\"/w/shop\":{\"name\":\"shop\",\"environmentName\":\"production\"}},\"user\":{\"token\":\"secret-token-value\"}}"
+      },
+      "absent": [
+        "secret-token-value"
+      ],
+      "expect": {
+        "title": "Deployed api to Railway (production)",
+        "status": "success",
+        "details": "Project: shop\nBuild logs: https://railway.com/project/p1/service/s1?id=d1\nRecorded automatically by the WaveBrain hook in backend.\nCommand: `railway up --service api --detach`"
+      }
+    },
+    {
+      "name": "fly deploy",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "fly deploy --remote-only"
+        },
+        "cwd": "/w/menu-scan-ai",
+        "output": "==> Building image\nVisit your newly deployed app at https://menu-scan.fly.dev/\n"
+      },
+      "files": {
+        "/w/menu-scan-ai/fly.toml": "# fly.toml\napp = \"menu-scan\"\nprimary_region = \"iad\"\n"
+      },
+      "expect": {
+        "title": "Deployed menu-scan to Fly.io",
+        "status": "success",
+        "details": "URL: https://menu-scan.fly.dev/\nRecorded automatically by the WaveBrain hook in menu-scan-ai.\nCommand: `fly deploy --remote-only`"
+      }
+    },
+    {
+      "name": "fly secrets set (values never recorded)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "fly secrets set STRIPE_KEY=abc123plain DB_URL=postgres://x -a menu-scan"
+        },
+        "cwd": "/w/menu-scan-ai"
+      },
+      "absent": [
+        "abc123plain"
+      ],
+      "expect": {
+        "title": "Set Fly.io secrets STRIPE_KEY, DB_URL on menu-scan",
+        "status": "success",
+        "details": "Values are never recorded.\nRecorded automatically by the WaveBrain hook in menu-scan-ai.\nCommand: `fly secrets set STRIPE_KEY=[redacted] DB_URL=[redacted] -a menu-scan`"
+      }
+    },
+    {
+      "name": "wrangler deploy with -c (pnpm dlx wrangler@4)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "pnpm dlx wrangler@4 deploy -c workers/slack/wrangler.jsonc"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "Total Upload: 12.3 KiB\nUploaded wavebrain-slack (1.2 sec)\nDeployed wavebrain-slack triggers (0.3 sec)\n  https://wavebrain-slack.acme.workers.dev\nCurrent Version ID: 1234abcd-5678-90ef\n"
+      },
+      "files": {
+        "/w/getwavebrain/workers/slack/wrangler.jsonc": "{\n  // Slack worker\n  \"name\": \"wavebrain-slack\",\n  \"main\": \"src/index.ts\"\n}\n"
+      },
+      "expect": {
+        "title": "Deployed Cloudflare Worker wavebrain-slack",
+        "status": "success",
+        "details": "URL: https://wavebrain-slack.acme.workers.dev\nVersion: 1234abcd-5678-90ef\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `pnpm dlx wrangler@4 deploy -c workers/slack/wrangler.jsonc`"
+      }
+    },
+    {
+      "name": "wrangler secret put",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "echo s3cretvalue | npx wrangler secret put SLACK_SIGNING_SECRET"
+        },
+        "cwd": "/w/worker"
+      },
+      "files": {
+        "/w/worker/wrangler.toml": "name = \"edge-proxy\"\nmain = \"src/index.ts\"\n"
+      },
+      "absent": [
+        "s3cretvalue"
+      ],
+      "expect": {
+        "title": "Set Cloudflare Worker secret SLACK_SIGNING_SECRET on edge-proxy",
+        "status": "success",
+        "details": "The value is never recorded.\nRecorded automatically by the WaveBrain hook in worker.\nCommand: `echo [redacted] | npx wrangler secret put SLACK_SIGNING_SECRET`"
+      }
+    },
+    {
+      "name": "netlify deploy --prod",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "netlify deploy --prod --dir dist"
+        },
+        "cwd": "/w/salah-home-website",
+        "output": "Deploy is live!\nUnique deploy URL: https://65abc--salah-home.netlify.app\nWebsite URL:       https://salah-home.netlify.app\n"
+      },
+      "expect": {
+        "title": "Deployed salah-home-website to production on Netlify",
+        "status": "success",
+        "details": "URL: https://salah-home.netlify.app\nDeploy: https://65abc--salah-home.netlify.app\nRecorded automatically by the WaveBrain hook in salah-home-website.\nCommand: `netlify deploy --prod --dir dist`"
+      }
+    },
+    {
+      "name": "kubectl apply",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "kubectl apply -f k8s/api.yaml -n prod"
+        },
+        "cwd": "/w/infra",
+        "output": "deployment.apps/api configured\nservice/api unchanged\n"
+      },
+      "expect": {
+        "title": "Applied k8s/api.yaml on Kubernetes in namespace prod",
+        "status": "success",
+        "details": "Changed:\n- deployment.apps/api configured\nRecorded automatically by the WaveBrain hook in infra.\nCommand: `kubectl apply -f k8s/api.yaml -n prod`"
+      }
+    },
+    {
+      "name": "terraform apply",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "terraform apply -auto-approve"
+        },
+        "cwd": "/w/infra",
+        "output": "Apply complete! Resources: 1 added, 2 changed, 0 destroyed.\n"
+      },
+      "expect": {
+        "title": "Applied Terraform infrastructure in infra: 1 added, 2 changed, 0 destroyed",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in infra.\nCommand: `terraform apply -auto-approve`"
+      }
+    },
+    {
+      "name": "docker push",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "docker push ghcr.io/acme/api:1.4.0"
+        },
+        "cwd": "/w/api",
+        "output": "1.4.0: digest: sha256:0123456789abcdef0123 size: 1234\n"
+      },
+      "expect": {
+        "title": "Pushed Docker image ghcr.io/acme/api:1.4.0",
+        "status": "success",
+        "details": "Digest: sha256:0123456789ab…\nRecorded automatically by the WaveBrain hook in api.\nCommand: `docker push ghcr.io/acme/api:1.4.0`"
+      }
+    },
+    {
+      "name": "npm publish",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "cd packages/wavebrain && npm publish --access public"
+        },
+        "cwd": "/w/wavebrain",
+        "output": "npm notice Publishing to https://registry.npmjs.org/\n+ wavebrain@0.5.0\n"
+      },
+      "files": {
+        "/w/wavebrain/packages/wavebrain/package.json": "{\"name\":\"wavebrain\",\"version\":\"0.5.0\"}"
+      },
+      "expect": {
+        "title": "Published wavebrain@0.5.0 to npm",
+        "status": "success",
+        "details": "Access: public\nRecorded automatically by the WaveBrain hook in wavebrain.\nCommand: `cd packages/wavebrain && npm publish --access public`"
+      }
+    },
+    {
+      "name": "npm publish: version already exists",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "pnpm publish"
+        },
+        "cwd": "/w/wavebrain/packages/hermes",
+        "failed": true,
+        "exitCode": 1,
+        "output": "npm ERR! code E403\nnpm ERR! 403 403 Forbidden - PUT https://registry.npmjs.org/wavebrain-hermes - You cannot publish over the previously published versions: 0.4.1.\n"
+      },
+      "files": {
+        "/w/wavebrain/packages/hermes/package.json": "{\"name\":\"wavebrain-hermes\",\"version\":\"0.4.1\"}"
+      },
+      "expect": {
+        "title": "Publishing wavebrain-hermes@0.4.1 to npm failed: npm ERR! 403 403 Forbidden - PUT https://registry.npmjs.org/wavebrain-…",
+        "status": "failure",
+        "details": "Failed: npm ERR! 403 403 Forbidden - PUT https://registry.npmjs.org/wavebrain-hermes - You cannot publish over the previously published versions: 0.4.1.\nRecorded automatically by the WaveBrain hook in hermes.\nCommand: `pnpm publish`"
+      }
+    },
+    {
+      "name": "eas build (iOS, production)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "eas build -p ios --profile production --non-interactive"
+        },
+        "cwd": "/w/alexandros",
+        "output": "✔ Build finished\n🍏 iOS app:\nhttps://expo.dev/accounts/acme/projects/alexandros/builds/abc-123\n"
+      },
+      "files": {
+        "/w/alexandros/app.json": "{\"expo\":{\"name\":\"Alexandros\",\"version\":\"1.4.0\",\"ios\":{\"bundleIdentifier\":\"com.acme.alexandros\",\"buildNumber\":\"52\"},\"android\":{\"package\":\"com.acme.alexandros\"}}}"
+      },
+      "expect": {
+        "title": "Built iOS production build of Alexandros on EAS",
+        "status": "success",
+        "details": "App: iOS com.acme.alexandros\nVersion 1.4.0 (build 52)\nProfile: production\nEAS: https://expo.dev/accounts/acme/projects/alexandros/builds/abc-123\nRecorded automatically by the WaveBrain hook in alexandros.\nCommand: `eas build -p ios --profile production --non-interactive`"
+      }
+    },
+    {
+      "name": "eas submit",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "npx eas submit -p ios --latest"
+        },
+        "cwd": "/w/alexandros"
+      },
+      "files": {
+        "/w/alexandros/app.config.ts": "export default { name: 'Alexandros', slug: 'alexandros', ios: { bundleIdentifier: 'com.acme.alexandros' } }"
+      },
+      "expect": {
+        "title": "Submitted Alexandros iOS build to App Store Connect with EAS",
+        "status": "success",
+        "details": "App: iOS com.acme.alexandros\nRecorded automatically by the WaveBrain hook in alexandros.\nCommand: `npx eas submit -p ios --latest`"
+      }
+    },
+    {
+      "name": "eas update",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "eas update --branch production --message \"Fix menu prices\""
+        },
+        "cwd": "/w/menu-scan-ai"
+      },
+      "files": {
+        "/w/menu-scan-ai/app.json": "{\"expo\":{\"name\":\"Menu Scan\"}}"
+      },
+      "expect": {
+        "title": "Published an EAS update for Menu Scan to production: Fix menu prices",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in menu-scan-ai.\nCommand: `eas update --branch production --message \"Fix menu prices\"`"
+      }
+    },
+    {
+      "name": "xcrun altool upload",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "xcrun altool --upload-app -f build/Alexandros.ipa -t ios --apiKey ABC --apiIssuer DEF"
+        },
+        "cwd": "/w/alexandros",
+        "output": "No errors uploading 'build/Alexandros.ipa'\n"
+      },
+      "expect": {
+        "title": "Uploaded Alexandros.ipa to App Store Connect",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in alexandros.\nCommand: `xcrun altool --upload-app -f build/Alexandros.ipa -t ios --apiKey ABC --apiIssuer DEF`"
+      }
+    },
+    {
+      "name": "fastlane pilot",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "fastlane pilot upload"
+        },
+        "cwd": "/w/alexandros/ios"
+      },
+      "files": {
+        "/w/alexandros/ios/fastlane/Appfile": "app_identifier(\"com.acme.alexandros\")\n",
+        "/w/alexandros/ios/Alexandros.xcodeproj/project.pbxproj": "x"
+      },
+      "expect": {
+        "title": "Uploaded Alexandros to TestFlight with fastlane",
+        "status": "success",
+        "details": "Bundle ID: com.acme.alexandros\nRecorded automatically by the WaveBrain hook in ios.\nCommand: `fastlane pilot upload`"
+      }
+    },
+    {
+      "name": "stripe CLI create",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "stripe products create --name=\"Pro plan\""
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "{\n  \"id\": \"prod_Q1w2e3r4\",\n  \"object\": \"product\"\n}\n"
+      },
+      "expect": {
+        "title": "Created a Stripe product: Pro plan",
+        "status": "success",
+        "details": "ID: prod_Q1w2e3r4\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `stripe products create --name=\"Pro plan\"`"
+      }
+    },
+    {
+      "name": "db migrate (drizzle via package script)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "pnpm db:migrate"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "[✓] applying migrations... 0009_actions_bot\n[✓] migrations applied successfully!\n"
+      },
+      "files": {
+        "/w/getwavebrain/package.json": "{\"scripts\":{\"db:migrate\":\"drizzle-kit migrate\"}}"
+      },
+      "expect": {
+        "title": "Ran Drizzle migrations on getwavebrain: applied 1 migration",
+        "status": "success",
+        "details": "Migrations:\n- 0009_actions_bot\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `pnpm db:migrate`"
+      }
+    },
+    {
+      "name": "prisma migrate deploy",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "npx prisma migrate deploy"
+        },
+        "cwd": "/w/shop",
+        "output": "The following migration(s) have been applied:\n\nmigrations/\n  └─ 20261113120000_add_bot/\n    └─ migration.sql\n"
+      },
+      "expect": {
+        "title": "Ran Prisma migrations on shop: applied 1 migration",
+        "status": "success",
+        "details": "Migrations:\n- 20261113120000_add_bot\nRecorded automatically by the WaveBrain hook in shop.\nCommand: `npx prisma migrate deploy`"
+      }
+    },
+    {
+      "name": "psql UPDATE (no values)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "psql \"$DATABASE_URL\" -c \"UPDATE users SET plan='enterprise-secret-plan' WHERE id=5\""
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "UPDATE 1\n"
+      },
+      "absent": [
+        "enterprise-secret-plan"
+      ],
+      "expect": {
+        "title": "Updated 1 row in users with psql",
+        "status": "success",
+        "details": "Recorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `psql \"$DATABASE_URL\" -c \"…\"`"
+      }
+    },
+    {
+      "name": "psql several statements",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "psql -d app -c \"DELETE FROM sessions WHERE expired; INSERT INTO audit (what) VALUES ('cleanup')\""
+        },
+        "cwd": "/w/app",
+        "output": "DELETE 4\nINSERT 0 1\n"
+      },
+      "expect": {
+        "title": "Ran 2 write statements with psql on app: DELETE sessions, INSERT audit",
+        "status": "success",
+        "details": "Statements:\n- DELETE sessions\n- INSERT audit\nRecorded automatically by the WaveBrain hook in app.\nCommand: `psql -d app -c \"…\"`"
+      }
+    },
+    {
+      "name": "curl IndexNow",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -s -X POST https://api.indexnow.org/indexnow -H \"Content-Type: application/json\" -d '{\"host\":\"getwavebrain.com\",\"key\":\"abc123\",\"urlList\":[\"https://getwavebrain.com/blog/a\",\"https://getwavebrain.com/blog/b\",\"https://getwavebrain.com/blog/c\"]}' -w \"%{http_code}\""
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "200"
+      },
+      "absent": [
+        "abc123"
+      ],
+      "expect": {
+        "title": "Submitted 3 URLs to IndexNow for getwavebrain.com",
+        "status": "success",
+        "details": "Request: POST api.indexnow.org/indexnow\nBody fields: host, key, urlList\nHTTP 200\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `curl -s -X POST https://api.indexnow.org/indexnow -H … -d … -w \"%{http_code}\"`"
+      }
+    },
+    {
+      "name": "curl Slack webhook (path is a secret)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -X POST -H 'Content-type: application/json' --data '{\"text\":\"Deploy done\"}' https://hooks.slack.com/services/T000/B000/XXXXXXXXsecret"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "ok"
+      },
+      "absent": [
+        "XXXXXXXXsecret"
+      ],
+      "expect": {
+        "title": "Posted to Slack: Deploy done",
+        "status": "success",
+        "details": "Request: POST hooks.slack.com (path hidden)\nBody fields: text\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `curl -X POST -H … --data … https://hooks.slack.com/…`"
+      }
+    },
+    {
+      "name": "curl Resend",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -X POST https://api.resend.com/emails -H \"Authorization: Bearer re_abcdefghijklmnop1234\" -H 'Content-Type: application/json' -d '{\"from\":\"hi@acme.com\",\"to\":[\"bob@foo.com\",\"amy@bar.com\"],\"subject\":\"Welcome to WaveBrain\",\"html\":\"<p>x</p>\"}'"
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "{\"id\":\"4ef9a417\"}"
+      },
+      "absent": [
+        "bob@foo.com",
+        "re_abcdefghijklmnop1234"
+      ],
+      "expect": {
+        "title": "Sent an email via Resend: Welcome to WaveBrain",
+        "status": "success",
+        "details": "To 2 recipients at 2 domains\nRequest: POST api.resend.com/emails\nBody fields: from, to, subject, html\nRecorded automatically by the WaveBrain hook in getwavebrain.\nCommand: `curl -X POST https://api.resend.com/emails -H … -H … -d …`"
+      }
+    },
+    {
+      "name": "curl Stripe",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -X POST https://api.stripe.com/v1/refunds -u sk_test_abcdefghijklmnop: -d charge=ch_123"
+        },
+        "cwd": "/w/shop"
+      },
+      "absent": [
+        "sk_test_abcdefghijklmnop"
+      ],
+      "expect": {
+        "title": "Created a Stripe refund",
+        "status": "success",
+        "details": "Request: POST api.stripe.com/v1/refunds\nRecorded automatically by the WaveBrain hook in shop.\nCommand: `curl -X POST https://api.stripe.com/v1/refunds -u … -d …`"
+      }
+    },
+    {
+      "name": "curl generic, HTTP 404",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -s -X DELETE 'https://api.example.com/v1/items/42?token=zzz' -w '\\n%{http_code}'"
+        },
+        "cwd": "/w/app",
+        "output": "{\"error\":\"not found\"}\n404"
+      },
+      "absent": [
+        "zzz"
+      ],
+      "expect": {
+        "title": "Failed: Called DELETE api.example.com/v1/items/42",
+        "status": "failure",
+        "details": "Failed: HTTP 404\nRequest: DELETE api.example.com/v1/items/42\nHTTP 404\nRecorded automatically by the WaveBrain hook in app.\nCommand: `curl -s -X DELETE 'https://api.example.com/v1/items/42?… -w '\\n%{http_code}'`"
+      }
+    },
+    {
+      "name": "mail -s",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "mail -s \"Weekly report\" bob@acme.com alice@foo.com < report.txt"
+        },
+        "cwd": "/w/app"
+      },
+      "absent": [
+        "bob@acme.com",
+        "alice@foo.com"
+      ],
+      "expect": {
+        "title": "Sent an email: Weekly report",
+        "status": "success",
+        "details": "To 2 recipients at 2 domains\nRecorded automatically by the WaveBrain hook in app.\nCommand: `mail -s \"Weekly report\" [email] [email] < report.txt`"
+      }
+    },
+    {
+      "name": "MCP: Notion create pages",
+      "event": {
+        "toolName": "mcp__notion__notion-create-pages",
+        "toolInput": {
+          "parent": {
+            "page_id": "abc"
+          },
+          "pages": [
+            {
+              "properties": {
+                "title": "Q4 plan"
+              },
+              "content": "# Goals\n..."
+            }
+          ]
+        },
+        "cwd": "/w/getwavebrain",
+        "output": "{\"pages\":[{\"url\":\"https://www.notion.so/Q4-plan-1a2b\"}]}"
+      },
+      "expect": {
+        "title": "Notion → created pages: Q4 plan",
+        "status": "success",
+        "details": "Link: https://www.notion.so/Q4-plan-1a2b\nRecorded automatically by the WaveBrain hook in getwavebrain.\nTool: notion/notion-create-pages"
+      }
+    },
+    {
+      "name": "MCP: Gmail send (no addresses)",
+      "event": {
+        "toolName": "mcp__claude_ai_Gmail__send_message",
+        "toolInput": {
+          "to": "bob@acme.com",
+          "subject": "Invoice #42",
+          "body": "Hi Bob, attached."
+        }
+      },
+      "absent": [
+        "bob@acme.com"
+      ],
+      "expect": {
+        "title": "Gmail → sent message: Invoice #42",
+        "status": "success",
+        "details": "Arguments: to: [email]; subject: Invoice #42; body: Hi Bob, attached.\nRecorded automatically by the WaveBrain hook.\nTool: claude_ai_Gmail/send_message"
+      }
+    },
+    {
+      "name": "MCP: failure",
+      "event": {
+        "toolName": "mcp__linear__create_issue",
+        "toolInput": {
+          "title": "Login redirect loops",
+          "teamId": "ENG"
+        },
+        "failed": true,
+        "output": "Error: Unauthorized (401)"
+      },
+      "expect": {
+        "title": "Linear → couldn't create issue: Login redirect loops",
+        "status": "failure",
+        "details": "Failed: Error: Unauthorized (401)\nArguments: title: Login redirect loops; teamId: ENG\nRecorded automatically by the WaveBrain hook.\nTool: linear/create_issue"
+      }
+    },
+    {
+      "name": "heredoc and quoted text don't trigger rules",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "cd ~/w && python3 - <<'EOF'\nprint('git push origin main; vercel --prod')\nEOF\necho \"then git push\""
+        },
+        "cwd": "/w/app"
+      },
+      "expect": null
+    },
+    {
+      "name": "a commit message that mentions git push is a commit",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git commit -m \"Explain git push in the README\""
+        },
+        "cwd": "/w/app",
+        "output": "[main 5e6f7a8] Explain git push in the README\n 1 file changed, 4 insertions(+)\n"
+      },
+      "git": {},
+      "expect": {
+        "title": "Committed to app/main: Explain git push in the README",
+        "status": "success",
+        "details": "Commit: 5e6f7a8\nRecorded automatically by the WaveBrain hook in app.\nCommand: `git commit -m \"Explain git push in the README\"`"
+      }
+    },
+    {
+      "name": "git push: range in the output but the repo is gone",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "git pull --rebase -q origin main && git push origin HEAD:main 2>&1 | tail -2"
+        },
+        "cwd": "/w/wt-getwavebrain-bots",
+        "output": "To https://github.com/acme/getwavebrain.git\n   8436e9e..d21708b  HEAD -> main\n"
+      },
+      "git": {},
+      "expect": {
+        "title": "Pushed to wt-getwavebrain-bots/main",
+        "status": "success",
+        "details": "Range: 8436e9e..d21708b\nRecorded automatically by the WaveBrain hook in wt-getwavebrain-bots.\nCommand: `git pull --rebase -q origin main && git push origin HEAD:main 2>&1 | tail -2`"
+      }
+    },
+    {
+      "name": "curl with --data and no -X is a POST",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "curl -s https://api.github.com/repos/acme/app/issues -H \"Authorization: token ghp_abcdefghijklmnopqrstuvwxyz0123\" --data '{\"title\":\"Login loops\"}'"
+        },
+        "cwd": "/w/app",
+        "output": "{\"html_url\":\"https://github.com/acme/app/issues/7\"}"
+      },
+      "absent": [
+        "ghp_abcdefghijklmnopqrstuvwxyz0123"
+      ],
+      "expect": {
+        "title": "Opened a GitHub issue in acme/app: Login loops",
+        "status": "success",
+        "details": "Request: POST api.github.com/repos/acme/app/issues\nBody fields: title\nRecorded automatically by the WaveBrain hook in app.\nCommand: `curl -s https://api.github.com/repos/acme/app/issues -H … --data …`"
+      }
+    },
+    {
+      "name": "vercel deploy: JSON output (agent mode)",
+      "event": {
+        "toolName": "Bash",
+        "toolInput": {
+          "command": "vercel deploy --prod --yes 2>&1 | tail -12"
+        },
+        "cwd": "/w/agent-logs",
+        "output": "{\n  \"status\": \"ok\",\n  \"deployment\": {\n    \"url\": \"agent-logs-ee8hkfoty-guilles-projects-2b42a59a.vercel.app\",\n    \"aliases\": [\"agent-logs.vercel.app\"]\n  },\n  \"next\": [{ \"command\": \"vercel inspect agent-logs-ee8hkfoty-guilles-projects-2b42a59a.vercel.app\" }]\n}\n"
+      },
+      "expect": {
+        "title": "Deployed agent-logs to production on Vercel (agent-logs.vercel.app)",
+        "status": "success",
+        "details": "Deployment: https://agent-logs-ee8hkfoty-guilles-projects-2b42a59a.vercel.app\nLive at: https://agent-logs.vercel.app\nRecorded automatically by the WaveBrain hook in agent-logs.\nCommand: `vercel deploy --prod --yes 2>&1 | tail -12`"
+      }
+    }
+  ]
+}

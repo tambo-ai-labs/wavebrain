@@ -1,6 +1,6 @@
 {
   "name": "wavebrain",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "WaveBrain, the audit log of what your AI agents do. Prints how to set it up for each agent.",
   "type": "module",
   "bin": {

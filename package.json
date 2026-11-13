@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/sync.mjs --check && node --test test/ packages/core/test/",
+    "test": "node scripts/sync.mjs --check && node --test test/ packages/core/test/ && python3 test/test_hermes.py",
     "sync": "node scripts/sync.mjs"
   }
 }
