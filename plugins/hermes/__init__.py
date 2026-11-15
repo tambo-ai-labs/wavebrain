@@ -6,6 +6,10 @@ a short standing instruction so it usually does.
 
 Same rules (rules.json), queue format (~/.wavebrain/queue/*.jsonl) and REST endpoint as
 the Claude Code, Codex and Cursor hooks.
+
+Also counts MCP tool calls for the Stats page (server and tool name, status, duration; never
+arguments or results), buffered in ~/.wavebrain/tool-calls and sent in batches to
+/api/v1/tool-calls, the same format the JS hooks use. Not activity-log entries, not quota.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -129,6 +134,8 @@ def _config() -> dict:
         "apiKey": os.environ.get("WAVEBRAIN_API_KEY") or cfg.get("apiKey"),
         "apiUrl": os.environ.get("WAVEBRAIN_API_URL") or cfg.get("apiUrl") or DEFAULT_API_URL,
         "enabled": os.environ.get("WAVEBRAIN_HOOKS") != "off" and cfg.get("autoCapture") is not False,
+        # MCP tool-call counts for Stats; off with WAVEBRAIN_TOOL_CALLS=off or "toolCalls": false.
+        "toolCalls": os.environ.get("WAVEBRAIN_TOOL_CALLS") != "off" and cfg.get("toolCalls") is not False,
     }
 
 
@@ -1428,6 +1435,187 @@ def flush(session: str) -> dict:
         return {"sent": sent, "skipped": skipped, "kept": len(keep)}
 
 
+# ---------- MCP tool calls ----------
+
+TOOL_BATCH_MAX = 500  # the endpoint's limit per request
+TOOL_FLUSH_COUNT = 100  # send a buffer once it holds this many calls...
+TOOL_FLUSH_AGE = 10 * 60  # ...or its oldest call has waited this long (seconds)
+TOOL_BATCHES_PER_FLUSH = 4
+
+
+def tool_calls_url(api_url: str) -> str:
+    return os.environ.get("WAVEBRAIN_TOOL_CALLS_URL") or re.sub(r"/actions/?$", "/tool-calls", str(api_url))
+
+
+def _registry_server(name: str):
+    """(known, server) from the running Hermes: known is True when Hermes has this tool registered,
+    and server is the raw MCP server name, or None for a built-in tool."""
+    try:
+        from tools import mcp_tool as _m  # type: ignore
+
+        server = _m._mcp_tool_server_names.get(name)
+        if server:
+            return True, str(server)
+    except Exception:
+        pass
+    try:
+        from tools.registry import registry  # type: ignore
+
+        toolset = registry.get_toolset_for_tool(name)
+        if toolset:
+            return True, (toolset[4:] if str(toolset).startswith("mcp-") else None)
+    except Exception:
+        pass
+    return False, None
+
+
+def mcp_tool_call(name: str):
+    """{"server", "tool"} for an MCP tool call worth counting, or None (built-in, or WaveBrain's own)."""
+    name = str(name or "")
+    known, server = _registry_server(name)
+    parts = _mcp_parts(name)
+    if known and not server:
+        return None
+    if server:
+        tool = parts[1] if parts else name
+    elif parts:
+        server, tool = parts
+    else:
+        return None
+    if re.search(r"wavebrain", server, re.I) or re.search(r"wavebrain", name, re.I) or not tool:
+        return None
+    return {"server": server[:128], "tool": tool[:128]}
+
+
+def _tool_dir() -> Path:
+    return _home() / "tool-calls"
+
+
+def _tool_file(session: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", session or "default")[:80]
+    return _tool_dir() / f"hermes-{safe}.jsonl"
+
+
+def _tool_due(path: Path, now: float) -> bool:
+    calls = _read(path)
+    if len(calls) >= TOOL_FLUSH_COUNT:
+        return True
+    if not calls:
+        return False
+    try:
+        from datetime import datetime
+
+        first = datetime.fromisoformat(str(calls[0]["occurred_at"]).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return True
+    return now - first >= TOOL_FLUSH_AGE
+
+
+def buffer_tool_call(name, session, failed=False, duration_ms=None, now=None):
+    """Appends one MCP call (names only) to the session's buffer. Returns the record, or None."""
+    tc = mcp_tool_call(name)
+    if not tc:
+        return None
+    now = time.time() if now is None else now
+    call = {"agent": agent_name(), "client_name": "hermes"}
+    bot = bot_name()
+    if bot:
+        call["bot"] = bot
+    call.update({"server": tc["server"], "tool": tc["tool"], "status": "error" if failed else "success"})
+    if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool) and duration_ms >= 0:
+        call["duration_ms"] = min(int(round(duration_ms)), 86_400_000)
+    call["occurred_at"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now)) + f".{int(now * 1000) % 1000:03d}Z"
+    _append(_tool_file(session), call)
+    return call
+
+
+def flush_tool_calls(session: str, force: bool = False, only: bool = False, now=None, opener=None) -> dict:
+    """Cuts due buffers into batch files with a fixed batch id, then sends pending batches. A batch
+    that fails to send keeps its id, so the retry is idempotent on the server."""
+    cfg = _config()
+    now = time.time() if now is None else now
+    d = _tool_dir()
+    opener = opener or urllib.request.urlopen
+    own = _tool_file(session).name
+    with _lock:
+        try:
+            names = sorted(os.listdir(d))
+        except Exception:
+            return {"sent": 0, "kept": 0, "dropped": 0}
+        for n in names:
+            p = d / n
+            orphan = ".claim-" in n and now - _mtime(p) > 60
+            if not n.endswith(".jsonl") and not orphan:
+                continue
+            if only and n != own:
+                continue
+            if not orphan and not (force and n == own) and not _tool_due(p, now):
+                continue
+            claim = p if orphan else p.with_name(f"{n}.claim-{os.getpid()}-{uuid.uuid4().hex[:8]}")
+            try:
+                if not orphan:
+                    p.rename(claim)
+            except Exception:
+                continue
+            calls = _read(claim)
+            for i in range(0, len(calls), TOOL_BATCH_MAX):
+                b = {"batch_id": str(uuid.uuid4()), "created": now * 1000, "calls": calls[i : i + TOOL_BATCH_MAX]}
+                bp = d / f"batch-{b['batch_id']}.json"
+                bp.write_text(json.dumps(b))
+                os.chmod(bp, 0o600)
+            claim.unlink(missing_ok=True)
+        batches = sorted(n for n in os.listdir(d) if n.startswith("batch-") and n.endswith(".json"))
+    sent = dropped = tried = 0
+    for n in batches:
+        p = d / n
+        try:
+            b = json.loads(p.read_text())
+        except Exception:
+            b = None
+        if not b or not b.get("batch_id") or not isinstance(b.get("calls"), list) or now * 1000 - (b.get("created") or 0) > MAX_AGE * 1000:
+            dropped += 1
+            p.unlink(missing_ok=True)
+            continue
+        if not (cfg["apiKey"] and cfg["enabled"] and cfg["toolCalls"]) or tried >= TOOL_BATCHES_PER_FLUSH:
+            continue
+        tried += 1
+        req = urllib.request.Request(
+            tool_calls_url(cfg["apiUrl"]),
+            data=json.dumps({"batch_id": b["batch_id"], "calls": b["calls"]}).encode(),
+            headers={"content-type": "application/json", "authorization": f"Bearer {cfg['apiKey']}"},
+            method="POST",
+        )
+        try:
+            with opener(req, timeout=5) as r:
+                if 200 <= r.status < 300:
+                    sent += 1
+                    p.unlink(missing_ok=True)
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 401, 402, 404, 413):
+                dropped += 1
+                p.unlink(missing_ok=True)
+            elif e.code == 429:
+                break
+        except Exception:
+            pass  # offline: keep the batch and its id for next time
+    try:
+        kept = sum(1 for n in os.listdir(d) if n.startswith("batch-") and n.endswith(".json"))
+    except Exception:
+        kept = 0
+    return {"sent": sent, "kept": kept, "dropped": dropped}
+
+
+def _mtime(p: Path) -> float:
+    try:
+        return p.stat().st_mtime
+    except Exception:
+        return time.time()
+
+
+def _flush_tools_bg(session: str, force: bool = False, only: bool = False):
+    threading.Thread(target=flush_tool_calls, args=(session, force, only), daemon=True).start()
+
+
 def _flush_bg(session: str):
     threading.Thread(target=flush, args=(session,), daemon=True).start()
 
@@ -1464,6 +1652,13 @@ def on_post_tool_call(tool_name=None, args=None, result=None, session_id=None, s
         args = args if isinstance(args, dict) else {}
         session = str(session_id or kwargs.get("task_id") or "default")
         now = time.time() * 1000
+        if cfg["toolCalls"]:
+            try:
+                tool_failed = status not in (None, "success", "ok") or bool(error_message)
+                if buffer_tool_call(name, session, tool_failed, kwargs.get("duration_ms")) and _tool_due(_tool_file(session), now / 1000):
+                    _flush_tools_bg(session, only=True)
+            except Exception:
+                pass
         if re.search(r"wavebrain.*log_action$", name, re.I):
             _append(_queue(session), {"kind": "agent_logged", "at": now})
             return
@@ -1500,7 +1695,9 @@ def on_post_tool_call(tool_name=None, args=None, result=None, session_id=None, s
 
 def on_session_end(session_id=None, **kwargs):
     try:
-        _flush_bg(str(session_id or kwargs.get("task_id") or "default"))
+        session = str(session_id or kwargs.get("task_id") or "default")
+        _flush_bg(session)
+        _flush_tools_bg(session, force=True)
     except Exception:
         pass
 

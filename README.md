@@ -24,6 +24,8 @@ With only an MCP server, an action is logged only if the model remembers to call
 
 Secrets (Stripe, GitHub, npm, AWS, OpenAI/Anthropic, Slack, JWTs, bearer tokens, `password=`, URL credentials, long opaque strings) are redacted before anything leaves the machine. Turn capture off with `WAVEBRAIN_HOOKS=off`, or `"autoCapture": false` in `~/.wavebrain/config.json`.
 
+Since 0.6 the hooks also count MCP tool calls for the dashboard's Stats page: the server and tool name, success or error, and duration when the host reports it, never arguments or results. They are buffered in `~/.wavebrain/tool-calls/` and sent in batches (at session end, or once 100 calls or 10 minutes pile up) to `POST /api/v1/tool-calls`. They are not activity-log entries and don't count toward the action quota. WaveBrain's own tools are skipped. Turn it off with `WAVEBRAIN_TOOL_CALLS=off` or `"toolCalls": false`.
+
 ## Layout
 
 ```

@@ -120,5 +120,97 @@ class RealGit(unittest.TestCase):
         self.assertEqual(n["title"], "Pushed to git: git push -q origin main")
 
 
+class ToolCalls(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="wb-py-tc-")
+        self.env = {k: os.environ.get(k) for k in ("WAVEBRAIN_HOME", "WAVEBRAIN_API_KEY", "WAVEBRAIN_TOOL_CALLS", "WAVEBRAIN_BOT", "HERMES_HOME")}
+        os.environ.update({"WAVEBRAIN_HOME": self.home, "WAVEBRAIN_API_KEY": "al_test_key_000000000000000000", "WAVEBRAIN_BOT": "CEO", "HERMES_HOME": self.home})
+        os.environ.pop("WAVEBRAIN_TOOL_CALLS", None)
+
+    def tearDown(self):
+        for k, v in self.env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def batches(self):
+        d = Path(self.home, "tool-calls")
+        return sorted(n for n in os.listdir(d) if n.startswith("batch-")) if d.exists() else []
+
+    def opener(self, status=201):
+        sent = []
+
+        class Resp:
+            def __init__(self, code):
+                self.status = code
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def open_(req, timeout=None):
+            sent.append({"url": req.full_url, "body": json.loads(req.data)})
+            if status >= 400:
+                raise h.urllib.error.HTTPError(req.full_url, status, "x", {}, None)
+            return Resp(status)
+
+        return sent, open_
+
+    def test_recognizes_mcp_tools_and_skips_wavebrain_and_builtins(self):
+        self.assertEqual(h.mcp_tool_call("mcp__github__list_issues"), {"server": "github", "tool": "list_issues"})
+        self.assertEqual(h.mcp_tool_call("mcp_linear_get_issue"), {"server": "linear", "tool": "get_issue"})
+        for n in ("mcp__wavebrain__log_action", "mcp__wavebrain__list_actions", "terminal", "read_file", ""):
+            self.assertIsNone(h.mcp_tool_call(n), n)
+
+    def test_post_tool_call_buffers_names_only(self):
+        h.on_post_tool_call(
+            tool_name="mcp__stripe__create_refund", args={"amount": 5000, "customer": "cus_secret"}, result='{"secret": "result"}',
+            session_id="s1", status="error", duration_ms=812.4, error_message="boom",
+        )
+        h.on_post_tool_call(tool_name="terminal", args={"command": "ls"}, result="{}", session_id="s1", status="ok", duration_ms=3)
+        text = h._tool_file("s1").read_text()
+        self.assertNotIn("cus_secret", text)
+        self.assertNotIn("result", text)
+        [c] = [json.loads(l) for l in text.splitlines()]
+        self.assertEqual(sorted(c), ["agent", "bot", "client_name", "duration_ms", "occurred_at", "server", "status", "tool"])
+        self.assertEqual((c["server"], c["tool"], c["status"], c["duration_ms"], c["bot"], c["client_name"]), ("stripe", "create_refund", "error", 812, "CEO", "hermes"))
+        self.assertRegex(c["occurred_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$")
+
+    def test_off_switch(self):
+        os.environ["WAVEBRAIN_TOOL_CALLS"] = "off"
+        h.on_post_tool_call(tool_name="mcp__github__list_issues", args={}, result="{}", session_id="s", status="ok")
+        self.assertFalse(h._tool_file("s").exists())
+
+    def test_session_end_sends_one_batch_and_retries_keep_the_id(self):
+        for _ in range(3):
+            h.buffer_tool_call("mcp__github__list_issues", "s")
+        sent, ok = self.opener()
+        self.assertEqual(h.flush_tool_calls("s", opener=ok)["sent"], 0)  # small and fresh: waits
+        down_sent, down = self.opener(503)
+        h.flush_tool_calls("s", force=True, opener=down)
+        self.assertEqual(len(self.batches()), 1)
+        h.flush_tool_calls("s", opener=ok)
+        self.assertEqual(sent[0]["body"]["batch_id"], down_sent[0]["body"]["batch_id"])
+        self.assertTrue(sent[0]["url"].endswith("/api/v1/tool-calls"))
+        self.assertEqual(len(sent[0]["body"]["calls"]), 3)
+        self.assertEqual(self.batches(), [])
+
+    def test_big_buffers_split_into_batches_of_500(self):
+        for _ in range(1100):
+            h.buffer_tool_call("mcp__github__list_issues", "big")
+        sent, ok = self.opener()
+        h.flush_tool_calls("other", opener=ok)
+        self.assertEqual(sorted(len(x["body"]["calls"]) for x in sent), [100, 500, 500])
+
+    def test_rejected_batches_are_dropped(self):
+        h.buffer_tool_call("mcp__github__list_issues", "s")
+        _, bad = self.opener(400)
+        h.flush_tool_calls("s", force=True, opener=bad)
+        self.assertEqual(self.batches(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

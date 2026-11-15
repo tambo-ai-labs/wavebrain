@@ -8,8 +8,13 @@
 //            already logged itself with log_action during that turn.
 //
 // Capture is local-first: a failed upload stays in ~/.wavebrain/queue and is retried next turn.
+//
+// Separately, every MCP tool call (server and tool name, status, duration; never arguments or
+// results) is buffered in ~/.wavebrain/tool-calls and sent in batches to /api/v1/tool-calls for
+// the Stats page. Those are not activity-log entries and don't count toward the action quota.
 
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,7 +50,14 @@ export function loadConfig(env = process.env) {
     apiKey: env.WAVEBRAIN_API_KEY || env.CLAUDE_PLUGIN_OPTION_API_KEY || cfg.apiKey || null,
     apiUrl: env.WAVEBRAIN_API_URL || cfg.apiUrl || DEFAULT_API_URL,
     enabled: env.WAVEBRAIN_HOOKS !== "off" && cfg.autoCapture !== false,
+    // MCP tool-call counts for Stats; off with WAVEBRAIN_TOOL_CALLS=off or "toolCalls": false.
+    toolCalls: env.WAVEBRAIN_TOOL_CALLS !== "off" && cfg.toolCalls !== false,
   };
+}
+
+/** /api/v1/tool-calls next to the configured /api/v1/actions URL. */
+export function toolCallsUrl(apiUrl, env = process.env) {
+  return env.WAVEBRAIN_TOOL_CALLS_URL || String(apiUrl).replace(/\/actions\/?$/, "/tool-calls");
 }
 
 // ---------- secrets ----------
@@ -1208,9 +1220,14 @@ function append(file, item) {
 }
 
 /** After a tool call. Returns what was queued (for tests), or null. */
-export async function observe({ host, session, toolName, toolInput, cwd, failed, output, exitCode }, { env = process.env, rules = loadRules(), now = Date.now(), lookups = {} } = {}) {
+export async function observe({ host, session, toolName, toolInput, cwd, failed, output, exitCode, durationMs }, { env = process.env, rules = loadRules(), now = Date.now(), lookups = {}, fetchImpl } = {}) {
   const cfg = loadConfig(env);
   if (!cfg.enabled) return null;
+  if (cfg.toolCalls) {
+    try {
+      await bufferToolCall({ host, session, toolName, toolInput, failed, durationMs }, { env, now, fetchImpl });
+    } catch {}
+  }
   const file = queueFile(host, session, env);
   if (isAgentLog(toolName, toolInput)) {
     append(file, { kind: "agent_logged", at: now });
@@ -1239,7 +1256,11 @@ export async function observe({ host, session, toolName, toolInput, cwd, failed,
 }
 
 /** End of turn: send queued actions the agent didn't log itself. Returns counts. */
-export async function flush({ host, session }, { env = process.env, now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
+export async function flush({ host, session, event }, { env = process.env, now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
+  // Tool calls go at session end, or once a buffer is big or old enough (checked on every turn).
+  try {
+    await flushToolCalls({ host, session, force: /sessionend/i.test(String(event || "")) }, { env, now, fetchImpl });
+  } catch {}
   const cfg = loadConfig(env);
   const file = queueFile(host, session, env);
   const items = readQueue(file);
@@ -1299,6 +1320,141 @@ function rewrite(file, items) {
   fs.renameSync(tmp, file);
 }
 
+// ---------- MCP tool calls ----------
+
+const TOOL_BATCH_MAX = 500; // the endpoint's limit per request
+const TOOL_FLUSH_COUNT = 100; // send a buffer once it holds this many calls…
+const TOOL_FLUSH_AGE_MS = 10 * 60 * 1000; // …or its oldest call has waited this long
+const TOOL_BATCHES_PER_FLUSH = 4; // bounds the time a hook spends on the network
+
+/** { server, tool } for an MCP tool call worth counting, or null (not MCP, or WaveBrain's own). */
+export function mcpToolCall(toolName, toolInput) {
+  const name = String(toolName || "");
+  const input = toolInput || {};
+  const p =
+    mcpParts(name) ??
+    (/^mcp$/i.test(name) ? { server: String(input.server || input.serverName || "mcp"), tool: String(input.toolName || input.tool_name || input.name || ""), noServer: !(input.server || input.serverName) } : null);
+  if (!p || !p.tool) return null;
+  if (/wavebrain/i.test(p.server) || isAgentLog(name, input) || (p.noServer && WAVEBRAIN_TOOLS.has(p.tool))) return null;
+  return { server: p.server.slice(0, 128), tool: p.tool.slice(0, 128) };
+}
+
+const toolDir = (env) => path.join(home(env), "tool-calls");
+export function toolCallsFile(host, session, env = process.env) {
+  return path.join(toolDir(env), `${safeId(host)}-${safeId(session)}.jsonl`);
+}
+
+/** Appends one MCP call to the session's buffer (names only); sends when the buffer is due. */
+export async function bufferToolCall({ host, session, toolName, toolInput, failed, durationMs }, { env = process.env, now = Date.now(), fetchImpl } = {}) {
+  const tc = mcpToolCall(toolName, toolInput);
+  if (!tc) return null;
+  const call = {
+    agent: host,
+    client_name: host,
+    ...(env.WAVEBRAIN_BOT && { bot: String(env.WAVEBRAIN_BOT).slice(0, 80) }),
+    server: tc.server,
+    tool: tc.tool,
+    status: failed ? "error" : "success",
+    ...(Number.isFinite(durationMs) && durationMs >= 0 && { duration_ms: Math.min(Math.round(durationMs), 86_400_000) }),
+    occurred_at: new Date(now).toISOString(),
+  };
+  const file = toolCallsFile(host, session, env);
+  append(file, call);
+  if (isDue(file, now)) await flushToolCalls({ host, session, only: true }, { env, now, fetchImpl });
+  return call;
+}
+
+function isDue(file, now) {
+  const calls = readQueue(file);
+  return calls.length >= TOOL_FLUSH_COUNT || (calls.length > 0 && now - Date.parse(calls[0].occurred_at) >= TOOL_FLUSH_AGE_MS);
+}
+
+/**
+ * Cuts due buffers into batch files with a fixed batch id, then sends pending batches. A batch that
+ * fails to send keeps its id, so the retry is idempotent on the server. `force` sends this
+ * session's buffer whatever its size; `only` looks at this session's buffer alone.
+ */
+export async function flushToolCalls({ host, session, force = false, only = false }, { env = process.env, now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
+  const cfg = loadConfig(env);
+  const dir = toolDir(env);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return { sent: 0, kept: 0, dropped: 0 };
+  }
+  const own = path.basename(toolCallsFile(host, session, env));
+  for (const n of names) {
+    const file = path.join(dir, n);
+    // A claim left behind by a hook that died mid-flush is just another buffer.
+    const orphan = /\.claim-/.test(n) && now - safeMtime(file) > 60_000;
+    if (!n.endsWith(".jsonl") && !orphan) continue;
+    if (only && n !== own) continue;
+    if (!orphan && !(force && n === own) && !isDue(file, now)) continue;
+    const claim = orphan ? file : `${file}.claim-${process.pid}-${randomUUID().slice(0, 8)}`;
+    try {
+      if (!orphan) fs.renameSync(file, claim); // atomic: a concurrent flush can't take the same calls
+    } catch {
+      continue;
+    }
+    const calls = readQueue(claim);
+    for (let i = 0; i < calls.length; i += TOOL_BATCH_MAX) {
+      const batch = { batch_id: randomUUID(), created: now, calls: calls.slice(i, i + TOOL_BATCH_MAX) };
+      fs.writeFileSync(path.join(dir, `batch-${batch.batch_id}.json`), JSON.stringify(batch), { mode: 0o600 });
+    }
+    try {
+      fs.unlinkSync(claim);
+    } catch {}
+  }
+
+  const batches = fs.readdirSync(dir).filter((n) => /^batch-.+\.json$/.test(n));
+  let sent = 0, dropped = 0, tried = 0;
+  for (const n of batches) {
+    const file = path.join(dir, n);
+    let batch;
+    try {
+      batch = JSON.parse(fs.readFileSync(file, "utf8"));
+    } catch {
+      batch = null;
+    }
+    if (!batch?.batch_id || !Array.isArray(batch.calls) || now - (batch.created ?? 0) > MAX_AGE_MS) {
+      dropped++;
+      fs.rmSync(file, { force: true });
+      continue;
+    }
+    if (!cfg.apiKey || !cfg.enabled || !cfg.toolCalls || !fetchImpl || tried >= TOOL_BATCHES_PER_FLUSH) continue;
+    tried++;
+    try {
+      const res = await fetchImpl(toolCallsUrl(cfg.apiUrl, env), {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({ batch_id: batch.batch_id, calls: batch.calls }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        sent++;
+        fs.rmSync(file, { force: true });
+      } else if ([400, 401, 402, 404, 413].includes(res.status)) {
+        // Not retryable (bad payload, bad key, or an older server without the endpoint).
+        dropped++;
+        fs.rmSync(file, { force: true });
+      } else if (res.status === 429) break;
+    } catch {
+      // Offline or timed out: keep the batch (and its id) for next time.
+    }
+  }
+  const kept = fs.readdirSync(dir).filter((n) => /^batch-.+\.json$/.test(n)).length;
+  return { sent, kept, dropped };
+}
+
+function safeMtime(file) {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return Date.now();
+  }
+}
+
 // ---------- host payloads ----------
 
 /** Plain-text tool output (Codex) has no exit code: treat a clear error line at the start or end as a failure. */
@@ -1347,5 +1503,7 @@ export function fromHookInput(host, input) {
     failed: Boolean(failed),
     output: outputText(input, resp),
     exitCode: typeof exit === "number" ? exit : null,
+    durationMs: [input.duration_ms, input.durationMs, input.duration, resp?.durationMs, resp?.duration_ms].find((v) => typeof v === "number" && Number.isFinite(v)),
+    event: input.hook_event_name || input.hookEventName || "",
   };
 }
