@@ -123,8 +123,8 @@ class RealGit(unittest.TestCase):
 class ToolCalls(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="wb-py-tc-")
-        self.env = {k: os.environ.get(k) for k in ("WAVEBRAIN_HOME", "WAVEBRAIN_API_KEY", "WAVEBRAIN_TOOL_CALLS", "WAVEBRAIN_BOT", "HERMES_HOME")}
-        os.environ.update({"WAVEBRAIN_HOME": self.home, "WAVEBRAIN_API_KEY": "al_test_key_000000000000000000", "WAVEBRAIN_BOT": "CEO", "HERMES_HOME": self.home})
+        self.env = {k: os.environ.get(k) for k in ("WAVEBRAIN_HOME", "WAVEBRAIN_API_KEY", "WAVEBRAIN_TOOL_CALLS", "WAVEBRAIN_BOT", "HERMES_HOME", "WAVEBRAIN_AUTO_CAPTURE")}
+        os.environ.update({"WAVEBRAIN_HOME": self.home, "WAVEBRAIN_API_KEY": "al_test_key_000000000000000000", "WAVEBRAIN_BOT": "CEO", "HERMES_HOME": self.home, "WAVEBRAIN_AUTO_CAPTURE": "on"})
         os.environ.pop("WAVEBRAIN_TOOL_CALLS", None)
 
     def tearDown(self):
@@ -183,6 +183,13 @@ class ToolCalls(unittest.TestCase):
         os.environ["WAVEBRAIN_TOOL_CALLS"] = "off"
         h.on_post_tool_call(tool_name="mcp__github__list_issues", args={}, result="{}", session_id="s", status="ok")
         self.assertFalse(h._tool_file("s").exists())
+
+    def test_auto_capture_paused_by_default(self):
+        os.environ.pop("WAVEBRAIN_AUTO_CAPTURE", None)
+        h.on_post_tool_call(tool_name="terminal", args={"command": "git push origin main"}, result='{"exit_code": 0}', session_id="p", status="ok")
+        self.assertFalse(h._queue("p").exists())
+        os.environ["WAVEBRAIN_AUTO_CAPTURE"] = "on"
+        self.assertTrue(h._config()["capture"])
 
     def test_session_end_sends_one_batch_and_retries_keep_the_id(self):
         for _ in range(3):

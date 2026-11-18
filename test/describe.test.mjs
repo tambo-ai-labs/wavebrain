@@ -106,7 +106,7 @@ test("real git: a push to a local remote is described from the reflog, then from
 
 test("observe sends the describer's status and the hook's output", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "wb-obs-"));
-  const env = { WAVEBRAIN_HOME: home, HOME: home, WAVEBRAIN_API_KEY: "" };
+  const env = { WAVEBRAIN_HOME: home, HOME: home, WAVEBRAIN_API_KEY: "", WAVEBRAIN_AUTO_CAPTURE: "on" };
   const c = fx.cases.find((x) => x.name === "curl generic, HTTP 404");
   const item = await observe({ host: "claude-code", session: "s", ...c.event }, { env, lookups: lookups(c) });
   assert.equal(item.payload.status, "failure");

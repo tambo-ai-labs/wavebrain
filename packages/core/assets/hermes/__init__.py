@@ -134,6 +134,9 @@ def _config() -> dict:
         "apiKey": os.environ.get("WAVEBRAIN_API_KEY") or cfg.get("apiKey"),
         "apiUrl": os.environ.get("WAVEBRAIN_API_URL") or cfg.get("apiUrl") or DEFAULT_API_URL,
         "enabled": os.environ.get("WAVEBRAIN_HOOKS") != "off" and cfg.get("autoCapture") is not False,
+        # Recording actions automatically is PAUSED (0.7.0): opt back in with
+        # WAVEBRAIN_AUTO_CAPTURE=on or "autoCapture": "on". Tool-call counts for Stats still run.
+        "capture": os.environ.get("WAVEBRAIN_AUTO_CAPTURE") == "on" or cfg.get("autoCapture") == "on",
         # MCP tool-call counts for Stats; off with WAVEBRAIN_TOOL_CALLS=off or "toolCalls": false.
         "toolCalls": os.environ.get("WAVEBRAIN_TOOL_CALLS") != "off" and cfg.get("toolCalls") is not False,
     }
@@ -1661,6 +1664,8 @@ def on_post_tool_call(tool_name=None, args=None, result=None, session_id=None, s
                 pass
         if re.search(r"wavebrain.*log_action$", name, re.I):
             _append(_queue(session), {"kind": "agent_logged", "at": now})
+            return
+        if not cfg["capture"]:
             return
         failed = status not in (None, "success", "ok") or bool(error_message)
         output, exit_code = _result_text(result)

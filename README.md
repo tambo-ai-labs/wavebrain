@@ -17,6 +17,8 @@ Windsurf, VS Code and Claude Desktop only need the MCP server: the setup page at
 
 ## Why hooks
 
+> **Auto-capture is paused (0.7.0).** The hooks no longer record actions on their own; agents log with `log_action` only. Opt back in with `WAVEBRAIN_AUTO_CAPTURE=on` or `"autoCapture": "on"` in `~/.wavebrain/config.json`. The tool-call counts for Stats (below) keep running.
+
 With only an MCP server, an action is logged only if the model remembers to call `log_action`. Hooks make the record dependable:
 
 1. **observe** (after each tool call): if the call is high-stakes (deploy, push, merge, release, publish, payment, email, database write, a write-type MCP tool), queue it in `~/.wavebrain/queue/`. Local only, instant, never blocks the agent.

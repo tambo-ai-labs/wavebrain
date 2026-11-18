@@ -5,14 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { classify, commandDir, flush, fromHookInput, loadRules, observe, pushedBranch, queueFile, readGit, redact } from "../shared/core.mjs";
+import { classify, commandDir, flush, fromHookInput, loadConfig, loadRules, observe, pushedBranch, queueFile, readGit, redact } from "../shared/core.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rules = loadRules();
 const sh = (command) => classify(rules, { toolName: "Bash", toolInput: { command } });
 const sandbox = () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wb-core-"));
-  return { WAVEBRAIN_HOME: dir, WAVEBRAIN_API_KEY: "al_test_key_000000000000000000", HOME: dir };
+  return { WAVEBRAIN_HOME: dir, WAVEBRAIN_API_KEY: "al_test_key_000000000000000000", HOME: dir, WAVEBRAIN_AUTO_CAPTURE: "on" };
 };
 const okFetch = (calls) => async (url, init) => (calls.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization }), { ok: true, status: 201 });
 
@@ -92,6 +92,14 @@ test("without a key nothing is sent and nothing is lost", async () => {
   await observe({ host: "claude-code", session: "s", toolName: "Bash", toolInput: { command: "git push" } }, { env });
   const r = await flush({ host: "claude-code", session: "s" }, { env, fetchImpl: async () => assert.fail("no fetch without a key") });
   assert.equal(r.kept, 1);
+});
+
+test("auto-capture is paused unless WAVEBRAIN_AUTO_CAPTURE=on", async () => {
+  const env = { ...sandbox(), WAVEBRAIN_AUTO_CAPTURE: "" };
+  const got = await observe({ host: "claude-code", session: "p1", toolName: "Bash", toolInput: { command: "git push origin main" }, cwd: "/tmp/x" }, { env });
+  assert.equal(got, null);
+  assert.equal(loadConfig(env).capture, false);
+  assert.equal(loadConfig({ ...env, WAVEBRAIN_AUTO_CAPTURE: "on" }).capture, true);
 });
 
 test("WAVEBRAIN_HOOKS=off turns capture off", async () => {

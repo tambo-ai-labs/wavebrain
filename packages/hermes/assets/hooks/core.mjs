@@ -50,6 +50,9 @@ export function loadConfig(env = process.env) {
     apiKey: env.WAVEBRAIN_API_KEY || env.CLAUDE_PLUGIN_OPTION_API_KEY || cfg.apiKey || null,
     apiUrl: env.WAVEBRAIN_API_URL || cfg.apiUrl || DEFAULT_API_URL,
     enabled: env.WAVEBRAIN_HOOKS !== "off" && cfg.autoCapture !== false,
+    // Recording shell/MCP actions automatically is PAUSED (0.7.0): opt back in with
+    // WAVEBRAIN_AUTO_CAPTURE=on or "autoCapture": "on". Tool-call counts for Stats still run.
+    capture: env.WAVEBRAIN_AUTO_CAPTURE === "on" || cfg.autoCapture === "on",
     // MCP tool-call counts for Stats; off with WAVEBRAIN_TOOL_CALLS=off or "toolCalls": false.
     toolCalls: env.WAVEBRAIN_TOOL_CALLS !== "off" && cfg.toolCalls !== false,
   };
@@ -1233,6 +1236,7 @@ export async function observe({ host, session, toolName, toolInput, cwd, failed,
     append(file, { kind: "agent_logged", at: now });
     return { kind: "agent_logged" };
   }
+  if (!cfg.capture) return null;
   const action = classify(rules, { toolName, toolInput, cwd, failed, output, exitCode }, { ...lookups, now, home: env.HOME });
   if (!action) return null;
   const item = {
